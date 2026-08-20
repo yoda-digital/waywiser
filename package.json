@@ -1,0 +1,52 @@
+{
+	"name": "waywiser",
+	"version": "1.0.0",
+	"description": "Waywiser — a personal AI agent on the Pi harness: living identity (SOUL.md), cross-session memory (MEMORY + FTS5), full delegate_task, execute_code, web tools, todo, skills management, cronjob, clarify, kanban, goals, and the /waywiser command set.",
+	"keywords": [
+		"pi-package",
+		"pi-extension",
+		"waywiser",
+		"agent",
+		"personal-agent",
+		"memory",
+		"subagents"
+	],
+	"type": "module",
+	"license": "MIT",
+	"pi": {
+		"extensions": [
+			"extensions"
+		],
+		"skills": [
+			"skills"
+		]
+	},
+	"engines": {
+		"node": ">=22.5"
+	},
+	"files": [
+		"bin",
+		"extensions",
+		"skills",
+		"config",
+		"README.md",
+		"LICENSE"
+	],
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": ">=0.80.0"
+	},
+	"dependencies": {
+		"typebox": "^1.3.16"
+	},
+	"bin": {
+		"waywiser": "./bin/waywiser",
+		"hermes": "./bin/hermes"
+	},
+	"scripts": {
+		"test": "node --test test/*.test.ts"
+	},
+	"devDependencies": {
+		"@earendil-works/pi-coding-agent": "0.84.2",
+		"jiti": "^2.7.0"
+	}
+}

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# waywiser — personal AI agent on the Pi harness.
+# Thin wrapper: sets up ~/.waywiser (identity, memory, board) and launches pi
+# with the Waywiser extensions, skills, and defaults.
+set -euo pipefail
+
+WAYWISER_HOME="${WAYWISER_HOME:-$HOME/.waywiser}"
+export WAYWISER_HOME
+WAYWISER_PKG_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+# First-run bootstrap: create home + default files (never overwrite existing).
+mkdir -p "$WAYWISER_HOME" "$WAYWISER_HOME/skills"
+
+# One-time migration from the former Hermes home (~/.hermes): non-destructive
+# copies into the new home. Nothing existing is overwritten; the old home is
+# left untouched. Legacy hermes.db becomes waywiser.db (identical schema).
+LEGACY_HOME="$HOME/.hermes"
+if [ -d "$LEGACY_HOME" ]; then
+	migrated=0
+	for f in SOUL.md MEMORY.md USER.md TODO.md kanban.json; do
+		if [ ! -e "$WAYWISER_HOME/$f" ] && [ -e "$LEGACY_HOME/$f" ]; then
+			cp "$LEGACY_HOME/$f" "$WAYWISER_HOME/$f"; migrated=1
+		fi
+	done
+	# DB (rename: hermes.db -> waywiser.db; same schema)
+	if [ ! -e "$WAYWISER_HOME/waywiser.db" ] && [ -e "$LEGACY_HOME/hermes.db" ]; then
+		cp "$LEGACY_HOME/hermes.db" "$WAYWISER_HOME/waywiser.db"; migrated=1
+	fi
+	for d in cron skills; do
+		if [ ! -e "$WAYWISER_HOME/$d" ] && [ -d "$LEGACY_HOME/$d" ]; then
+			cp -R "$LEGACY_HOME/$d" "$WAYWISER_HOME/$d"; migrated=1
+		fi
+	done
+	if [ -n "$migrated" ]; then
+		echo "waywiser: migrated state from $LEGACY_HOME (old home left untouched)" >&2
+	fi
+fi
+
+touch "$WAYWISER_HOME/MEMORY.md" "$WAYWISER_HOME/USER.md"
+if [ ! -f "$WAYWISER_HOME/SOUL.md" ]; then
+	cp "$WAYWISER_PKG_DIR/config/SOUL.md" "$WAYWISER_HOME/SOUL.md"
+	echo "waywiser: created default identity at $WAYWISER_HOME/SOUL.md" >&2
+fi
+
+# Migrate legacy SOUL.md content: re-stamp identity to Waywiser (in-place,
+# idempotent — only rewrites when the identity line still says Hermes).
+if grep -q "I am \*\*Hermes\*\*" "$WAYWISER_HOME/SOUL.md" 2>/dev/null; then
+	sed -i "s/I am \*\*Hermes\*\*/I am **Waywiser**/; s/^- Name: Hermes$/- Name: Waywiser/" "$WAYWISER_HOME/SOUL.md"
+	echo "waywiser: restamped migrated identity to Waywiser" >&2
+fi
+
+exec pi --extension "$WAYWISER_PKG_DIR/extensions/index.ts" \
+   --skill "$WAYWISER_PKG_DIR/skills/waywiser/SKILL.md" \
+   "$@"
