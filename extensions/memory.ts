@@ -60,7 +60,7 @@ export async function memAction(db: ReturnType<typeof db_>, action: string, p: R
 			return { text: `Stored memory #${id}: ${content}` };
 		}
 		case "recall":
-			return runRecallText(db, String(p.query ?? ""), Math.min(Number(p.limit) || 5, 20));
+			return brainRecallText(db, String(p.query ?? ""), Math.min(Number(p.limit) || 5, 20));
 		case "forget": {
 			const id = Number(p.id);
 			const r = db.prepare("DELETE FROM memories WHERE id = ?").run(id);
@@ -373,6 +373,54 @@ export function recallDecision(state: RecallState, key: string, throttle: number
 	// otherwise re-select only once per `throttle` user turns (cache stability).
 	if (key !== state.lastKey) return true;
 	return state.userTurns - state.lastSelectionTurn >= throttle;
+}
+
+/**
+ * Brain-enhanced recall: uses Brain's reciprocal rank fusion when available,
+ * falls back to basic FTS match if Brain isn't loaded.
+ * Brain's recall does per-term search (not exact phrase), so "decisions"
+ * finds "decision", and unicode terms work properly.
+ */
+async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit = 5): Promise<{ text: string }> {
+	const q = query.trim();
+	if (!q) return runRecallText(db, q, limit);
+
+	try {
+		// Dynamic import — Brain may or may not be installed
+		const { BrainStore } = await import("../plugins/brain/extensions/brain/store.ts");
+		const { loadBrainConfig } = await import("../plugins/brain/extensions/brain/config.ts");
+		const { recall } = await import("../plugins/brain/extensions/brain/recall.ts");
+
+		const config = loadBrainConfig();
+		// Open Brain's store on the same DB that Waywiser uses
+		const store = new BrainStore(config.dbPath);
+
+		const result = recall({
+			prompt: q,
+			cwd: process.cwd(),
+			projectKey: null,
+			config: config.recall,
+			scopingConfig: config.scoping,
+			store,
+		});
+
+		store.close();
+
+		if (!result.items.length) return { text: "No memories matched." };
+		return {
+			text: result.items
+				.map((item) => {
+					if (item.type === "memory") {
+						return `#${item.id} [memory] ${item.content} (score: ${item.score.toFixed(3)})`;
+					}
+					return `[procedure] ${item.content} (score: ${item.score.toFixed(3)})`;
+				})
+				.join("\n"),
+		};
+	} catch {
+		// Brain not available — fall back to old recall
+		return runRecallText(db, q, limit);
+	}
 }
 
 export async function runRecallText(db: ReturnType<typeof db_>, query: string, limit = 5): Promise<{ text: string }> {
