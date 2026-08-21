@@ -108,7 +108,34 @@ export function db_(): DatabaseSync {
 			session TEXT NOT NULL,
 			summary TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
-		);`,
+		);
+
+		CREATE TABLE IF NOT EXISTS boards (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			description TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			archived INTEGER NOT NULL DEFAULT 0
+		);
+
+		CREATE TABLE IF NOT EXISTS cards (
+			id TEXT PRIMARY KEY,
+			board_id TEXT NOT NULL DEFAULT 'default',
+			title TEXT NOT NULL,
+			type TEXT NOT NULL DEFAULT 'task',
+			status TEXT NOT NULL DEFAULT 'todo',
+			priority TEXT NOT NULL DEFAULT 'med',
+			assignee TEXT,
+			block_reason TEXT,
+			notes TEXT,
+			report TEXT,
+			due TEXT,
+			worker_child TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+
+		INSERT OR IGNORE INTO boards (id, name) VALUES ('default', 'Default');`,
 	);
 	return db;
 }

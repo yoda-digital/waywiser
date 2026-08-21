@@ -219,14 +219,14 @@ test("kanban: ops roundtrip on an isolated board file", () => {
 	assert.ok(stats.ok && stats.msg.includes("todo=2") && stats.msg.includes("overdue=1"), `stats: ${stats.msg}`);
 	const show = boardOps.show("K1");
 	assert.ok(show.ok && show.msg.includes("[high]") && /due/i.test(show.msg));
-	want("move", boardOps.move("K1", "ready"));
+	want("move", boardOps.move("K1", "doing"));
 	want("note", boardOps.note("K1", "needs fixtures"));
 	want("report", boardOps.report("K1", "did the thing"));
 	want("block", boardOps.block("K2", "waiting on api key"));
 	want("resume", boardOps.resume("K2"));
 	want("done", boardOps.done("K1"));
 	const stats2 = boardOps.stats();
-	assert.ok(stats2.ok && stats2.msg.includes("done=1") && stats2.msg.includes("ready=1") && !stats2.msg.includes("blocked"), `stats2: ${stats2.msg}`);
+	assert.ok(stats2.ok && stats2.msg.includes("done=1") && stats2.msg.includes("todo=1") && !stats2.msg.includes("blocked"), `stats2: ${stats2.msg}`);
 	want("remove", boardOps.remove("K2"));
 	want("clear_done", boardOps.clearDone());
 	assert.ok(boardOps.list().msg.includes("empty"));
