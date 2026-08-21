@@ -220,8 +220,21 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Expand leading `~/` or `~\` to the user's home directory. */
+function expandTilde(p: string): string {
+  if (p.startsWith("~/") || p.startsWith("~\\")) return path.join(HOME, p.slice(2));
+  if (p === "~") return HOME;
+  return p;
+}
+
 function validateConfig(cfg: BrainConfig): BrainConfig {
   const out: BrainConfig = { ...cfg };
+
+  // Expand ~ in all path fields
+  out.markdownRoot = expandTilde(out.markdownRoot);
+  out.dbPath = expandTilde(out.dbPath);
+  out.skillsRoot = expandTilde(out.skillsRoot);
+  if (out.experienceRoot) out.experienceRoot = expandTilde(out.experienceRoot);
 
   out.provenance = {
     ...out.provenance,

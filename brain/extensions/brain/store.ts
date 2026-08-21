@@ -11,6 +11,8 @@
  * This module is the only place in the package that talks SQL. Every other
  * module goes through `BrainStore`'s typed methods.
  */
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type {
@@ -78,6 +80,11 @@ export class BrainStore {
   db: DatabaseSync;
 
   constructor(dbPath: string) {
+    // Ensure the parent directory exists (unless :memory:)
+    if (dbPath !== ":memory:") {
+      const dir = path.dirname(dbPath);
+      fs.mkdirSync(dir, { recursive: true });
+    }
     this.db = new DatabaseSync(dbPath);
     // WAL isn't supported for :memory: databases; SQLite just falls back
     // silently (journal_mode reports "memory"), so this is safe everywhere.
