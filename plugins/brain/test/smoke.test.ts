@@ -76,7 +76,7 @@ describe("smoke", () => {
       store.close();
     });
 
-    it("records experience, extracts learning, creates procedure, recalls it", () => {
+    it("records experience, extracts learning, creates procedure, recalls it", async () => {
       const config = DEFAULT_BRAIN_CONFIG;
 
       // 1. Create an experience with a failure + recovery
@@ -168,7 +168,7 @@ describe("smoke", () => {
       assert.equal(proc!.status, "tentative");
 
       // 8. Recall should now find the memory
-      const recalled = recall({
+      const recalled = await recall({
         prompt: "reading a large JSON file",
         cwd: "/project",
         projectKey: "smoke-test",
@@ -271,7 +271,7 @@ describe("smoke", () => {
   });
 
   describe("unicode recall smoke", () => {
-    it("tokenizes and recalls Romanian text", () => {
+    it("tokenizes and recalls Romanian text", async () => {
       const store = new BrainStore(":memory:");
       store.db.exec(`
         INSERT INTO memories (id, type, content, confidence, source, scope, status, tags, source_session, last_accessed, access_count, useful_count, not_useful_count)
@@ -283,7 +283,7 @@ describe("smoke", () => {
       assert.ok(terms.includes("postgresql"), "postgresql tokenized");
       assert.ok(terms.includes("baza"), "baza tokenized");
 
-      const results = recall({
+      const results = await recall({
         prompt: "PostgreSQL baza de date",
         cwd: "/",
         projectKey: null,
@@ -295,7 +295,7 @@ describe("smoke", () => {
       store.close();
     });
 
-    it("tokenizes and recalls Russian text", () => {
+    it("tokenizes and recalls Russian text", async () => {
       const store = new BrainStore(":memory:");
       store.db.exec(`
         INSERT INTO memories (id, type, content, confidence, source, scope, status, tags, source_session, last_accessed, access_count, useful_count, not_useful_count)
@@ -306,7 +306,7 @@ describe("smoke", () => {
       const terms = buildRecallQuery("TypeScript разработки");
       assert.ok(terms.includes("typescript"), "typescript tokenized");
 
-      const results = recall({
+      const results = await recall({
         prompt: "TypeScript разработки",
         cwd: "/",
         projectKey: null,

@@ -18,6 +18,7 @@
  */
 import type { BrainConfig, BrainMemory, MemoryScope, Procedure, RecallItem, RecallResult } from "./types.ts";
 import type { BrainStore } from "./store.ts";
+import { cosineSimilarity, blobToVec } from "./embeddings.ts";
 
 // ---------------------------------------------------------------------------
 // Tokenizer
@@ -164,20 +165,25 @@ export interface RecallOpts {
   config: BrainConfig["recall"];
   scopingConfig: BrainConfig["scoping"];
   store: BrainStore;
+  embedFn?: (text: string) => Promise<Float32Array | null>;
+  embeddingsConfig?: BrainConfig["embeddings"];
 }
 
 const EMPTY_RESULT: RecallResult = { items: [], memoryIds: [], procedureIds: [], revision: 0 };
 
 /**
  * Main recall function. Returns ranked memories and procedures fused across
- * lexical, scope, usage, confidence, and recency signals.
+ * lexical, scope, usage, confidence, recency, and (optionally) semantic
+ * similarity signals.
  *
  * Bumps access_count for ALL returned memories (bug fix: every recall path —
  * automatic or interactive — must bump access_count, not just some).
  *
  * Returns empty immediately if mode === "off" (bug fix: off truly means off).
+ *
+ * Async because the optional semantic signal calls an embedding API.
  */
-export function recall(opts: RecallOpts): RecallResult {
+export async function recall(opts: RecallOpts): Promise<RecallResult> {
   const { prompt, projectKey, config, store } = opts;
 
   // BUG FIX: recall=off truly means off
@@ -219,6 +225,40 @@ export function recall(opts: RecallOpts): RecallResult {
       termRanking.set(`proc_${p.id}`, i + 1);
     });
     termRankings.push(termRanking);
+  }
+
+  // 2. Semantic ranking (embedding similarity).
+  // Runs after FTS so semantic-only matches are added to the memory pool
+  // before the "nothing found" check. This is the cross-language bridge:
+  // a Romanian query can surface an English memory via vector similarity
+  // even when FTS produces zero lexical hits.
+  let semanticRanking: Map<string, number> | null = null;
+  if (opts.embedFn) {
+    try {
+      const queryVec = await opts.embedFn(prompt);
+      if (queryVec) {
+        const allEmbs = store.getAllEmbeddings();
+        const threshold = opts.embeddingsConfig?.similarityThreshold ?? 0.3;
+        const semanticScores: Array<{ id: string; sim: number }> = [];
+
+        for (const { memoryId, embedding } of allEmbs) {
+          const memVec = blobToVec(embedding);
+          const sim = cosineSimilarity(queryVec, memVec);
+          if (sim > threshold) {
+            semanticScores.push({ id: `mem_${memoryId}`, sim });
+            // Add to memory pool if not already surfaced by FTS
+            if (!memoryPool.has(memoryId)) {
+              const mem = store.getMemory(memoryId);
+              if (mem) memoryPool.set(memoryId, mem);
+            }
+          }
+        }
+
+        semanticScores.sort((a, b) => b.sim - a.sim);
+        semanticRanking = new Map<string, number>();
+        semanticScores.forEach((s, i) => semanticRanking!.set(s.id, i + 1));
+      }
+    } catch { /* embedding failed — continue without semantic signal */ }
   }
 
   const memories = [...memoryPool.values()];
@@ -294,17 +334,22 @@ export function recall(opts: RecallOpts): RecallResult {
   recencyScores.sort((a, b) => b.ts - a.ts);
   recencyScores.forEach((s, i) => recencyRanking.set(s.id, i + 1));
 
-  // Fuse
-  const fused = reciprocalRankFusion(
-    [lexicalRanking, scopeRanking, usageRanking, confRanking, recencyRanking],
-    [
-      config.fusionWeights.lexical,
-      config.fusionWeights.scope,
-      config.fusionWeights.usage,
-      config.fusionWeights.confidence,
-      config.fusionWeights.recency,
-    ],
-  );
+  // Fuse — add semantic signal when available
+  const rankings: Array<Map<string, number>> = [lexicalRanking, scopeRanking, usageRanking, confRanking, recencyRanking];
+  const weights: number[] = [
+    config.fusionWeights.lexical,
+    config.fusionWeights.scope,
+    config.fusionWeights.usage,
+    config.fusionWeights.confidence,
+    config.fusionWeights.recency,
+  ];
+
+  if (semanticRanking && semanticRanking.size > 0) {
+    rankings.push(semanticRanking);
+    weights.push(opts.embeddingsConfig?.weight ?? 1.5);
+  }
+
+  const fused = reciprocalRankFusion(rankings, weights);
 
   // Bound results
   const bounded = fused.slice(0, config.maxItems);
@@ -337,6 +382,7 @@ export function recall(opts: RecallOpts): RecallResult {
       usage: usageRanking.get(id) ?? 0,
       confidence: confRanking.get(id) ?? 0,
       recency: recencyRanking.get(id) ?? 0,
+      semantic: semanticRanking?.get(id) ?? 0,
     };
 
     items.push({

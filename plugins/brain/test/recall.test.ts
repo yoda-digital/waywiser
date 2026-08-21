@@ -108,8 +108,8 @@ describe("recall", () => {
       store.db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')");
     });
 
-    it("returns empty for recall=off", () => {
-      const result = recall({
+    it("returns empty for recall=off", async () => {
+      const result = await recall({
         prompt: "anything",
         cwd: "/project",
         projectKey: "myproject",
@@ -120,8 +120,8 @@ describe("recall", () => {
       assert.equal(result.items.length, 0);
     });
 
-    it("returns matching memories", () => {
-      const result = recall({
+    it("returns matching memories", async () => {
+      const result = await recall({
         prompt: "PostgreSQL database setup",
         cwd: "/project",
         projectKey: "myproject",
@@ -133,9 +133,9 @@ describe("recall", () => {
       assert.ok(result.items.some((i) => i.content.includes("PostgreSQL")));
     });
 
-    it("bumps access_count for returned memories", () => {
+    it("bumps access_count for returned memories", async () => {
       const before = store.db.prepare("SELECT access_count FROM memories WHERE id = 1").get() as any;
-      recall({
+      await recall({
         prompt: "PostgreSQL database",
         cwd: "/project",
         projectKey: "myproject",
@@ -147,8 +147,8 @@ describe("recall", () => {
       assert.ok(after.access_count > before.access_count);
     });
 
-    it("returns empty for no matching terms", () => {
-      const result = recall({
+    it("returns empty for no matching terms", async () => {
+      const result = await recall({
         prompt: "the and for with",
         cwd: "/project",
         projectKey: null,
@@ -159,8 +159,8 @@ describe("recall", () => {
       assert.equal(result.items.length, 0);
     });
 
-    it("respects maxItems limit", () => {
-      const result = recall({
+    it("respects maxItems limit", async () => {
+      const result = await recall({
         prompt: "PostgreSQL database dark mode JSON read cat",
         cwd: "/project",
         projectKey: "myproject",

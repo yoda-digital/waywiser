@@ -25,6 +25,7 @@ import { openBrainStore, type BrainStore } from "./store.ts";
 import { ExperienceTrace } from "./trace.ts";
 import { createCognitionPool, type CognitionPool } from "./cognition.ts";
 import { recall } from "./recall.ts";
+import { embed, vecToBlob } from "./embeddings.ts";
 import { renderBrainContext } from "./prompts.ts";
 import { deterministicExtract, reflectiveExtract, validateCandidates, recordMemoryUsage } from "./learner.ts";
 import { updateProcedureEvidence } from "./procedures.ts";
@@ -99,6 +100,16 @@ export default function brain(pi: ExtensionAPI): void {
       }
 
       store.beginSession(ctx.sessionManager.getSessionId?.() ?? "unknown");
+
+      // Backfill embeddings for memories that don't have them yet
+      if (config.embeddings?.enabled !== false) {
+        const unembedded = store.getMemoriesWithoutEmbeddings(20);
+        for (const mem of unembedded) {
+          embed(mem.content, config).then(vec => {
+            if (vec) store.setEmbedding(mem.id, vecToBlob(vec));
+          }).catch(() => {});
+        }
+      }
     } catch (err) {
       process.stderr.write(`brain: session_start error: ${errMsg(err)}\n`);
     }
@@ -120,13 +131,16 @@ export default function brain(pi: ExtensionAPI): void {
       if (config.recall.mode === "off") return; // truly off — no recall path runs
 
       const projectKey = detectProjectKey(ctx.cwd, config);
-      const recalled = recall({
+      const embeddingsEnabled = config.embeddings?.enabled !== false;
+      const recalled = await recall({
         prompt: event.prompt ?? "",
         cwd: ctx.cwd,
         projectKey,
         config: config.recall,
         scopingConfig: config.scoping,
         store,
+        embedFn: embeddingsEnabled ? (text: string) => embed(text, config) : undefined,
+        embeddingsConfig: config.embeddings,
       });
 
       trace.noteRecall(recalled);
@@ -245,6 +259,18 @@ export default function brain(pi: ExtensionAPI): void {
         // Check for evolution triggers.
         if (config.modules.evolve) {
           await checkEvolutionTriggers(store, cognitionPool, config);
+        }
+
+        // Embed new memories in background (don't block the learning path)
+        if (config.embeddings?.enabled !== false) {
+          for (const mem of validated.memories) {
+            const stored = store.searchMemories(mem.content.slice(0, 50), 1);
+            if (stored.length) {
+              embed(stored[0].content, config).then(vec => {
+                if (vec) store.setEmbedding(stored[0].id, vecToBlob(vec));
+              }).catch(() => {});
+            }
+          }
         }
 
         // Episode accumulation.

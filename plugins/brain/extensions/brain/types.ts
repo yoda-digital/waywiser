@@ -183,6 +183,7 @@ export interface RecallItem {
     usage: number;
     confidence: number;
     recency: number;
+    semantic?: number;
   };
 }
 
@@ -328,6 +329,14 @@ export interface BrainConfig {
     batchSize: number;
     runOnShutdown: boolean;
     dryRunByDefault: boolean;
+  };
+
+  embeddings?: {
+    enabled: boolean;
+    baseUrl: string;
+    model: string;
+    similarityThreshold: number;
+    weight: number;
   };
 }
 

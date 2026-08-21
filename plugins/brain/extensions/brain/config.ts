@@ -173,6 +173,14 @@ export const DEFAULT_BRAIN_CONFIG: Readonly<BrainConfig> = deepFreeze({
     runOnShutdown: true,
     dryRunByDefault: false,
   },
+
+  embeddings: {
+    enabled: true,
+    baseUrl: "https://ollama.nalyk.dev/v1",
+    model: "bge-m3:latest",
+    similarityThreshold: 0.3,
+    weight: 1.5,
+  },
 } satisfies BrainConfig);
 
 // ---------------------------------------------------------------------------

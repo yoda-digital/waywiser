@@ -400,7 +400,7 @@ async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit 
 		const waywiserDbPath = path.join(process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser"), "waywiser.db");
 		const store = new BrainStore(waywiserDbPath);
 
-		const result = recall({
+		const result = await recall({
 			prompt: q,
 			cwd: process.cwd(),
 			projectKey: null,

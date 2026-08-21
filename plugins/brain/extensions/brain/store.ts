@@ -372,6 +372,13 @@ export class BrainStore {
           experience_id TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
+
+      CREATE TABLE IF NOT EXISTS memory_embeddings (
+          memory_id INTEGER PRIMARY KEY,
+          embedding BLOB NOT NULL,
+          model TEXT NOT NULL DEFAULT 'bge-m3',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
 
     this.db.exec(`
@@ -968,6 +975,37 @@ export class BrainStore {
       this.db.exec("ROLLBACK");
       throw e;
     }
+  }
+
+  // -------------------------------------------------------------------
+  // Embeddings
+  // -------------------------------------------------------------------
+
+  getEmbedding(memoryId: number): Buffer | null {
+    const row = this.db.prepare("SELECT embedding FROM memory_embeddings WHERE memory_id = ?").get(memoryId) as { embedding: Uint8Array } | undefined;
+    return row?.embedding ? Buffer.from(row.embedding) : null;
+  }
+
+  setEmbedding(memoryId: number, embedding: Buffer, model: string = "bge-m3"): void {
+    this.db.prepare(
+      "INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding, model) VALUES (?, ?, ?)"
+    ).run(memoryId, embedding, model);
+  }
+
+  getAllEmbeddings(): Array<{ memoryId: number; embedding: Buffer }> {
+    const rows = this.db.prepare(
+      "SELECT memory_id, embedding FROM memory_embeddings"
+    ).all() as Array<{ memory_id: number; embedding: Uint8Array }>;
+    return rows.map(r => ({ memoryId: r.memory_id, embedding: Buffer.from(r.embedding) }));
+  }
+
+  getMemoriesWithoutEmbeddings(limit: number = 50): Array<{ id: number; content: string }> {
+    return this.db.prepare(
+      `SELECT m.id, m.content FROM memories m
+       WHERE m.status = 'active'
+       AND NOT EXISTS (SELECT 1 FROM memory_embeddings e WHERE e.memory_id = m.id)
+       LIMIT ?`
+    ).all(limit) as Array<{ id: number; content: string }>;
   }
 
   // -------------------------------------------------------------------
