@@ -7,7 +7,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-export const WAYWISER_VERSION = "0.1.0";
+// Kept in sync with package.json "version" by hand (bug fix: was stuck at "0.1.0").
+export const WAYWISER_VERSION = "1.0.0";
 
 export function waywiserHome(): string {
 	const home = process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser");

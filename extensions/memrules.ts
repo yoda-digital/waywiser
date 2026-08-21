@@ -5,7 +5,7 @@
  */
 export function tokens(s: string): Set<string> {
 	const out = new Set<string>();
-	for (const m of s.toLowerCase().matchAll(/[a-z0-9_]{2,}/g)) out.add(m[0]);
+	for (const m of s.toLowerCase().matchAll(/[\p{L}\p{N}_]{2,}/gu)) out.add(m[0]);
 	return out;
 }
 
@@ -124,7 +124,8 @@ export const RECALL_STOPWORDS = new Set([
 export function buildRecallQuery(userText: string): string[] {
 	const out: string[] = [];
 	const seen = new Set<string>();
-	for (const w of userText.toLowerCase().split(/[^a-z0-9_]+/)) {
+	for (const m of userText.toLowerCase().matchAll(/[\p{L}\p{N}_]{2,}/gu)) {
+		const w = m[0];
 		if (w.length < 3 || RECALL_STOPWORDS.has(w) || seen.has(w)) continue;
 		seen.add(w);
 		out.push(w);
