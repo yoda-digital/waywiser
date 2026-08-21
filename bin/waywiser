@@ -1,19 +1,17 @@
 #!/usr/bin/env bash
 # waywiser — personal AI agent on the Pi harness.
-# Thin wrapper: sets up ~/.waywiser (identity, memory, board) and launches pi
-# with the Waywiser extensions, skills, and defaults.
+# Thin wrapper: sets up ~/.waywiser (identity, memory, board), discovers
+# plugins from plugins/, and launches pi with everything wired up.
 set -euo pipefail
 
 WAYWISER_HOME="${WAYWISER_HOME:-$HOME/.waywiser}"
 export WAYWISER_HOME
 WAYWISER_PKG_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 
-# First-run bootstrap: create home + default files (never overwrite existing).
+# ── First-run bootstrap ───────────────────────────────────────────────
 mkdir -p "$WAYWISER_HOME" "$WAYWISER_HOME/skills"
 
-# One-time migration from the former Hermes home (~/.hermes): non-destructive
-# copies into the new home. Nothing existing is overwritten; the old home is
-# left untouched. Legacy hermes.db becomes waywiser.db (identical schema).
+# Migrate from former Hermes home (~/.hermes): non-destructive copies.
 LEGACY_HOME="$HOME/.hermes"
 if [ -d "$LEGACY_HOME" ]; then
 	migrated=0
@@ -22,7 +20,6 @@ if [ -d "$LEGACY_HOME" ]; then
 			cp "$LEGACY_HOME/$f" "$WAYWISER_HOME/$f"; migrated=1
 		fi
 	done
-	# DB (rename: hermes.db -> waywiser.db; same schema)
 	if [ ! -e "$WAYWISER_HOME/waywiser.db" ] && [ -e "$LEGACY_HOME/hermes.db" ]; then
 		cp "$LEGACY_HOME/hermes.db" "$WAYWISER_HOME/waywiser.db"; migrated=1
 	fi
@@ -42,34 +39,68 @@ if [ ! -f "$WAYWISER_HOME/SOUL.md" ]; then
 	echo "waywiser: created default identity at $WAYWISER_HOME/SOUL.md" >&2
 fi
 
-# Migrate legacy SOUL.md content: re-stamp identity to Waywiser (in-place,
-# idempotent — only rewrites when the identity line still says Hermes).
 if grep -q "I am \*\*Hermes\*\*" "$WAYWISER_HOME/SOUL.md" 2>/dev/null; then
 	sed -i "s/I am \*\*Hermes\*\*/I am **Waywiser**/; s/^- Name: Hermes$/- Name: Waywiser/" "$WAYWISER_HOME/SOUL.md"
 	echo "waywiser: restamped migrated identity to Waywiser" >&2
 fi
 
-# First-run brain config: copy example if no brain.json exists yet.
-if [ ! -f "$WAYWISER_HOME/brain.json" ] && [ -f "$WAYWISER_PKG_DIR/config/brain.example.json" ]; then
-	cp "$WAYWISER_PKG_DIR/config/brain.example.json" "$WAYWISER_HOME/brain.json"
-	echo "waywiser: created default brain config at $WAYWISER_HOME/brain.json" >&2
+# ── Plugin discovery ──────────────────────────────────────────────────
+# Scans plugins/*/ for Pi extensions and skills. Each plugin can have:
+#   extensions/<name>/index.ts  → loaded as --extension
+#   skills/<name>/SKILL.md      → loaded as --skill
+#   config/*.example.json       → copied to WAYWISER_HOME on first run
+PLUGIN_ARGS=()
+PLUGINS_DIR="$WAYWISER_PKG_DIR/plugins"
+
+if [ -d "$PLUGINS_DIR" ]; then
+	for plugin_dir in "$PLUGINS_DIR"/*/; do
+		[ -d "$plugin_dir" ] || continue
+		plugin_name="$(basename "$plugin_dir")"
+
+		# First-run: copy example configs to WAYWISER_HOME
+		if [ -d "${plugin_dir}config" ]; then
+			for example in "${plugin_dir}config/"*.example.json; do
+				[ -f "$example" ] || continue
+				target_name="$(basename "$example" .example.json).json"
+				if [ ! -f "$WAYWISER_HOME/$target_name" ]; then
+					cp "$example" "$WAYWISER_HOME/$target_name"
+					echo "waywiser: created default $target_name from $plugin_name plugin" >&2
+				fi
+			done
+		fi
+
+		# First-run: ensure plugin-specific directories
+		if [ "$plugin_name" = "brain" ]; then
+			mkdir -p "$WAYWISER_HOME/brain" \
+				"$WAYWISER_HOME/skills/active" \
+				"$WAYWISER_HOME/skills/candidates" \
+				"$WAYWISER_HOME/skills/retired"
+		fi
+
+		# Discover extensions (extensions/<subdir>/index.ts)
+		if [ -d "${plugin_dir}extensions" ]; then
+			for ext_dir in "${plugin_dir}extensions/"*/; do
+				[ -d "$ext_dir" ] || continue
+				if [ -f "${ext_dir}index.ts" ]; then
+					PLUGIN_ARGS+=(--extension "${ext_dir}index.ts")
+				fi
+			done
+		fi
+
+		# Discover skills (skills/<subdir>/SKILL.md)
+		if [ -d "${plugin_dir}skills" ]; then
+			for skill_dir in "${plugin_dir}skills/"*/; do
+				[ -d "$skill_dir" ] || continue
+				if [ -f "${skill_dir}SKILL.md" ]; then
+					PLUGIN_ARGS+=(--skill "${skill_dir}SKILL.md")
+				fi
+			done
+		fi
+	done
 fi
 
-# Brain extension (self-learning, auto-evolution, vault sync)
-BRAIN_EXT="$WAYWISER_PKG_DIR/brain/extensions/brain/index.ts"
-BRAIN_SKILL="$WAYWISER_PKG_DIR/brain/skills/brain/SKILL.md"
-
-BRAIN_ARGS=()
-if [ -f "$BRAIN_EXT" ]; then
-	BRAIN_ARGS+=(--extension "$BRAIN_EXT")
-	if [ -f "$BRAIN_SKILL" ]; then
-		BRAIN_ARGS+=(--skill "$BRAIN_SKILL")
-	fi
-	# Ensure brain directories exist
-	mkdir -p "$WAYWISER_HOME/brain" "$WAYWISER_HOME/skills/active" "$WAYWISER_HOME/skills/candidates" "$WAYWISER_HOME/skills/retired"
-fi
-
+# ── Launch ────────────────────────────────────────────────────────────
 exec pi --extension "$WAYWISER_PKG_DIR/extensions/index.ts" \
-   "${BRAIN_ARGS[@]}" \
+   "${PLUGIN_ARGS[@]}" \
    --skill "$WAYWISER_PKG_DIR/skills/waywiser/SKILL.md" \
    "$@"
