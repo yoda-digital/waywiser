@@ -18,8 +18,7 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
-import * as path from "node:path";
-import { db_, WAYWISER_VERSION, waywiserHome, homeFile, readJSON, registry_, shortId, memSettings } from "./utils/state.js";
+import { db_, WAYWISER_VERSION, homeFile, registry_, shortId, memSettings } from "./utils/state.js";
 import { memAction, parseMemCommandLine, runRecallText } from "./memory.js";
 import { runConsolidate, formatConsolidateReport } from "./mem-dream.js";
 
@@ -183,8 +182,7 @@ export default function commands(pi: ExtensionAPI): void {
 				lines.push(`memories: ${mem.n}`);
 				const cron = db_().prepare("SELECT COUNT(*) AS n FROM cronjobs WHERE enabled=1").get() as { n: number };
 				lines.push(`cron jobs: ${cron.n} active`);
-				const board = readJSON<{ cards?: Record<string, { status: string }> }>(path.join(waywiserHome(), "kanban.json"), {});
-				const cards = Object.values(board.cards ?? {});
+				const cards = db_().prepare("SELECT status FROM cards").all() as Array<{ status: string }>;
 				lines.push(`kanban: ${cards.length} cards (${cards.filter((c) => c.status === "done").length} done)`);
 				lines.push(`registry subagents: ${registry_().subagents.size}`);
 				lines.push(`context usage: ${ctx.getContextUsage() ? JSON.stringify(ctx.getContextUsage()) : "n/a"} · model: ${ctx.model ? `${ctx.model.provider ?? "?"}/${ctx.model.id ?? String(ctx.model)}` : "n/a"}`);
