@@ -160,14 +160,17 @@ export class BrainStore {
     const row = this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'memories_fts'").get() as
       | { sql: string }
       | undefined;
-    const needsRebuild = !row || !row.sql.includes("unicode61");
+    // remove_diacritics 2 strips ALL diacritical marks during indexing AND querying.
+    // This means "decizii" matches "décizii", "ț" matches "t", "ă" matches "a".
+    // Critical for Moldova (Romanian/Russian/English mix, with/without diacritics).
+    const needsRebuild = !row || !row.sql.includes("remove_diacritics");
 
     if (needsRebuild) {
       this.db.exec("DROP TABLE IF EXISTS memories_fts;");
       this.db.exec(`
         CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
             type, content, content='memories', content_rowid='id',
-            tokenize='unicode61'
+            tokenize='unicode61 remove_diacritics 2'
         );
       `);
       this.db.exec("INSERT INTO memories_fts(memories_fts) VALUES('rebuild');");
@@ -296,7 +299,7 @@ export class BrainStore {
       CREATE VIRTUAL TABLE IF NOT EXISTS procedures_fts USING fts5(
           trigger_text, avoid_text, prefer_text,
           content='procedures', content_rowid='rowid',
-          tokenize='unicode61'
+          tokenize='unicode61 remove_diacritics 2'
       );
 
       CREATE TABLE IF NOT EXISTS procedure_evidence (

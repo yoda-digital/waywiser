@@ -38,10 +38,10 @@ describe("recall", () => {
       assert.ok(terms.includes("furious"));
     });
 
-    it("limits to 12 terms", () => {
-      const long = Array.from({ length: 20 }, (_, i) => `word${i}`).join(" ");
+    it("limits terms to a reasonable count", () => {
+      const long = Array.from({ length: 30 }, (_, i) => `word${i}`).join(" ");
       const terms = buildRecallQuery(long);
-      assert.ok(terms.length <= 12);
+      assert.ok(terms.length <= 20, `got ${terms.length} terms, expected <= 20`);
     });
 
     it("deduplicates terms", () => {

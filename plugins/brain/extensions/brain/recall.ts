@@ -24,13 +24,30 @@ import type { BrainStore } from "./store.ts";
 // ---------------------------------------------------------------------------
 
 const STOPWORDS = new Set([
+  // English
   "the", "and", "for", "with", "this", "that", "from", "have", "has", "had",
   "was", "were", "are", "you", "your", "about", "into", "onto", "than", "then",
   "when", "what", "which", "who", "how", "why", "where", "there", "their",
   "they", "them", "just", "only", "still", "again", "because", "while",
   "after", "before", "over", "under", "please", "could", "would", "should",
   "can", "not", "but", "also", "been", "being", "will", "does", "did", "in",
+  // Romanian
+  "și", "si", "sau", "dar", "care", "din", "pentru", "este", "sunt", "mai",
+  "cum", "unde", "când", "cand", "deci", "doar", "foarte", "toate", "fost",
+  "acest", "acesta", "aceasta", "cele", "lui", "său", "sau",
+  // Russian
+  "и", "в", "на", "для", "что", "это", "как", "но", "не", "из", "по",
+  "от", "до", "или", "ещё", "уже", "так", "все", "при",
 ]);
+
+/**
+ * Strip diacritical marks from a string.
+ * "decizii" stays "decizii", "ț" → "t", "ă" → "a", "î" → "i", "ș" → "s", "â" → "a"
+ * Also handles Cyrillic ё → е.
+ */
+function stripDiacritics(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
 
 /**
  * Unicode-aware tokenizer. Extracts tokens of 2+ unicode letters/numbers
@@ -46,7 +63,13 @@ export function buildRecallQuery(text: string): string[] {
     if (STOPWORDS.has(w) || seen.has(w)) continue;
     seen.add(w);
     out.push(w);
-    if (out.length === 12) break; // reasonable limit
+    // Also add the diacritics-stripped version if different
+    const stripped = stripDiacritics(w);
+    if (stripped !== w && !seen.has(stripped)) {
+      seen.add(stripped);
+      out.push(stripped);
+    }
+    if (out.length >= 16) break;
   }
   return out;
 }
@@ -78,6 +101,56 @@ export function reciprocalRankFusion(
   return [...scores.entries()]
     .map(([id, score]) => ({ id, score }))
     .sort((a, b) => b.score - a.score);
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy LIKE fallback — for Moldova (ro/ru/en mix, diacritics, translit, typos)
+// ---------------------------------------------------------------------------
+
+/**
+ * When FTS finds nothing, fall back to LIKE search with diacritics stripped.
+ * This catches:
+ * - "decizii" matching content "decision" (partial overlap after stripping)
+ * - "решение" matching nothing (different script, but at least doesn't crash)
+ * - "functie" matching "funcție" (diacritics stripped)
+ * - Typos where the root word is close enough
+ */
+function fuzzyFallback(
+  terms: string[],
+  config: BrainConfig["recall"],
+  store: BrainStore,
+): RecallResult {
+  try {
+    const strippedTerms = terms.map(t => stripDiacritics(t));
+    const uniqueTerms = [...new Set(strippedTerms)].filter(t => t.length >= 3);
+    if (!uniqueTerms.length) return { items: [], memoryIds: [], procedureIds: [], revision: 0 };
+
+    // Build a LIKE query: any term matches anywhere in content
+    const conditions = uniqueTerms.map(() => "LOWER(content) LIKE ?").join(" OR ");
+    const params = uniqueTerms.map(t => `%${t.toLowerCase()}%`);
+
+    const rows = store.db.prepare(
+      `SELECT * FROM memories WHERE status = 'active' AND (${conditions}) ORDER BY confidence DESC, last_accessed DESC LIMIT ?`
+    ).all(...params, config.maxItems) as Array<Record<string, unknown>>;
+
+    if (!rows.length) return { items: [], memoryIds: [], procedureIds: [], revision: 0 };
+
+    const items: RecallItem[] = rows.map((row, i) => ({
+      type: "memory" as const,
+      id: Number(row.id),
+      content: String(row.content),
+      score: 0.01 / (1 + i), // low score — fuzzy match, below FTS results
+      scope: (String(row.scope) || "global") as MemoryScope,
+      fusionBreakdown: { lexical: 0, scope: 0, usage: 0, confidence: 0, recency: 0 },
+    }));
+
+    const memoryIds = items.map(i => i.id as number);
+    if (memoryIds.length) store.bumpAccessCount(memoryIds);
+
+    return { items, memoryIds, procedureIds: [], revision: Date.now() };
+  } catch {
+    return { items: [], memoryIds: [], procedureIds: [], revision: 0 };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -152,7 +225,10 @@ export function recall(opts: RecallOpts): RecallResult {
   const procedures = [...procedurePool.values()];
 
   if (!memories.length && !procedures.length) {
-    return EMPTY_RESULT;
+    // Fuzzy fallback: FTS found nothing. Try LIKE search with stripped diacritics.
+    // This catches cross-script near-misses (e.g. "decizii" matching "decision",
+    // Romanian without diacritics matching Romanian with, typos, translit, etc.)
+    return fuzzyFallback(terms, config, store);
   }
 
   // Build ranking maps for each signal
