@@ -158,62 +158,143 @@ Rules:
 - Report shown as blockquote `> Report: ...` (first 200 chars)
 - Overdue cards get `⚠️OVERDUE` marker
 
-### 1.5 HTML Status Page
+### 1.5 Live Board Dashboard (HTTP Server)
 
-**Path:** `~/.waywiser/board.html`
+**URL:** `http://localhost:7749/` (port configurable via `~/.waywiser/board-server.json`)
 
-**Characteristics:**
-- Single self-contained file (all CSS + JS inline, zero external deps)
-- Dark/light theme (respects `prefers-color-scheme` + explicit toggle)
-- Auto-refresh: JavaScript-based, not meta-refresh. Read own `data-generated` timestamp attribute, compare on interval, reload only when changed. Fallback: `<noscript><meta http-equiv="refresh" content="10"></noscript>`
-- XSS protection: all card data HTML-entity-escaped before interpolation
-- Responsive: columns stack on mobile
-- Works on `file://` protocol
+The kanban extension starts a tiny HTTP server (Node.js `http.createServer`, zero deps) bound to
+`127.0.0.1` on extension load. The server serves a self-contained single-page app and a REST API.
+All localhost, zero internet, fully sovereign.
+
+**Two modes:**
+- **Waywiser running** → `http://localhost:7749/` serves the live interactive board (full CRUD + real-time SSE)
+- **Waywiser NOT running** → `~/.waywiser/board.html` is a static snapshot generated on last mutation (read-only fallback)
+
+#### 1.5.1 REST API
+
+All endpoints return JSON. All mutations broadcast an SSE event.
+
+```
+GET    /api/boards                → [{ id, name, description, cardCount, overdueCount }]
+POST   /api/boards               → { id, name, description }  body: { name, description? }
+PUT    /api/boards/:id            → { id, name, description }  body: { name?, description? }
+DELETE /api/boards/:id            → { ok: true }
+
+GET    /api/cards?board=default   → [CardRow]  (filter by board, or all if omitted)
+POST   /api/cards                 → CardRow    body: { title, board_id?, type?, priority?, due? }
+PUT    /api/cards/:id             → CardRow    body: { title?, status?, priority?, type?, due?, notes?, assignee?, block_reason? }
+DELETE /api/cards/:id             → { ok: true }
+
+GET    /events                    → SSE stream (text/event-stream)
+                                    Events: card_created, card_updated, card_deleted, board_changed
+                                    Data: JSON of the affected entity
+```
+
+**Security:**
+- Bound to `127.0.0.1` only (not `0.0.0.0`) — inaccessible from network
+- No auth needed (localhost = trusted, same as pi itself)
+- CORS: `Access-Control-Allow-Origin: *` (allows file:// and any local origin)
+- XSS: all card data JSON-serialized via API, rendered by client-side JS with textContent (not innerHTML)
+
+#### 1.5.2 SSE Real-Time Events
+
+```
+GET /events HTTP/1.1
+
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+
+event: card_updated
+data: {"id":"K3","status":"done","title":"Implement hero"}
+
+event: board_changed
+data: {"boardId":"default","action":"card_moved"}
+```
+
+Every mutation (from TUI, tool, or API) broadcasts to all connected SSE clients. The browser
+auto-reconnects on disconnect (EventSource standard behavior).
+
+#### 1.5.3 Interactive HTML SPA
+
+Served at `GET /` — a single self-contained HTML page (all CSS + JS inline, zero external deps).
 
 **Layout:**
 
 ```
-┌─────────────────────────────────────────────────┐
-│  📋 Waywiser Board                    ☀️/🌙     │
-│  [Default] [website] [api]  ← board tabs        │
-│  5 open · 2 overdue · 8 done                    │
-├────────────┬────────────┬───────────┬────────────┤
-│ 📋 TODO    │ ⚡ DOING   │ 🔍 REVIEW │ ✅ DONE    │
-│            │            │           │            │
-│ ┌────────┐ │ ┌────────┐ │           │ ┌────────┐ │
-│ │K5  med │ │ │K3 high │ │           │ │K2   ✓  │ │
-│ │copy pg │ │ │hero 🔴 │ │           │ │astro   │ │
-│ │due:8/30│ │ │OVERDUE │ │           │ └────────┘ │
-│ └────────┘ │ │→agent  │ │           │ ┌────────┐ │
-│            │ └────────┘ │           │ │K4   ✓  │ │
-│ ┌────────┐ │            │           │ │CI      │ │
-│ │K7  low │ │            │           │ └────────┘ │
-│ │SEO 💡  │ │            │           │            │
-│ └────────┘ │            │           │            │
-├────────────┴────────────┴───────────┴────────────┤
-│ 🔴 BLOCKED: K1 Deploy (waiting for DNS)          │
-├──────────────────────────────────────────────────┤
-│ Last updated: 2026-08-21 14:32:05                │
-│ Auto-refresh: every 5s · board.html              │
-└──────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  📋 Waywiser Board              [+ Board]    ☀️/🌙      │
+│  [Default ●] [website] [api]                            │
+│  5 open · 2 overdue · 8 done · 1 blocked               │
+├─────────────┬─────────────┬────────────┬────────────────┤
+│ 📋 TODO [+] │ ⚡ DOING     │ 🔍 REVIEW  │ ✅ DONE        │
+│             │             │            │                │
+│ ┌─────────┐ │ ┌─────────┐ │            │ ┌────────────┐ │
+│ │K5  med  │ │ │K3 high  │ │            │ │K2  ✓ astro │ │
+│ │copy pg  │ │ │hero sect│ │            │ ├────────────┤ │
+│ │due:8/30 │ │ │🔴OVERDUE│ │            │ │K4  ✓ CI   │ │
+│ │ [✎][×]  │ │ │→subagent│ │            │ └────────────┘ │
+│ └─────────┘ │ │ [✎][×]  │ │            │                │
+│ ┌─────────┐ │ └─────────┘ │            │                │
+│ │K7  low  │ │             │            │                │
+│ │SEO  💡  │ │             │            │                │
+│ │ [✎][×]  │ │             │            │                │
+│ └─────────┘ │             │            │                │
+├─────────────┴─────────────┴────────────┴────────────────┤
+│ 🔴 BLOCKED: K1 Deploy to production (DNS access)  [▶]  │
+├─────────────────────────────────────────────────────────┤
+│ ● Connected · Last event: 14:32:05 · localhost:7749     │
+└─────────────────────────────────────────────────────────┘
 ```
+
+**CRUD interactions:**
+
+| Action | UI | API call |
+|--------|-----|----------|
+| Add card | Click [+] on column header → inline form (title, type, priority, due) | POST /api/cards |
+| Edit card | Click [✎] → expand card with editable fields | PUT /api/cards/:id |
+| Delete card | Click [×] → confirm dialog | DELETE /api/cards/:id |
+| Move card | Drag card to another column (HTML5 Drag & Drop API) | PUT /api/cards/:id {status} |
+| Quick-done | Click card checkbox | PUT /api/cards/:id {status:"done"} |
+| Add board | Click [+ Board] → name prompt | POST /api/boards |
+| Switch board | Click board tab | Client-side filter (no API call) |
+| Unblock | Click [▶] on blocked card | PUT /api/cards/:id {status:"todo", block_reason:null} |
 
 **Card rendering:**
 - Priority color: critical=red, high=orange, med=blue, low=gray
 - Type icon: task=none, idea=💡, bug=🐛
 - Overdue: red border + "⚠️ OVERDUE" badge
 - Assignee: shown as "→ name"
-- Click card to expand: shows notes, report, timestamps
-- Worker in-flight indicator: spinning emoji or pulsing border
+- Click card to expand: shows notes (editable), report (read-only), timestamps
+- Worker in-flight indicator: pulsing border + "⏳ subagent working..."
+- Expand/collapse done column (collapsed by default, shows count)
 
-**Board tabs:**
-- One tab per non-archived board
-- Active tab highlighted
-- Shows card count per board
+**Real-time:**
+- SSE connection to `/events`
+- On any event → re-fetch affected card/board, update DOM (no full page reload)
+- Connection status indicator: `● Connected` / `○ Disconnected (retrying...)`
+- Offline fallback: if server unreachable, show static snapshot from last fetch
 
-**Stats bar:**
-- `N open · N overdue · N done · N blocked`
-- Computed from the active board
+**Design:**
+- Dark/light theme (CSS `prefers-color-scheme` + manual toggle, persisted in localStorage)
+- Responsive: 4 columns on desktop, 2 on tablet, 1 on mobile
+- Smooth drag-and-drop with drop-zone highlighting
+- Inline editing (click title to edit, press Enter to save, Escape to cancel)
+- Minimal animations (card slide on move, fade on delete)
+
+#### 1.5.4 Static Snapshot Fallback
+
+On every mutation (debounced 500ms), also write `~/.waywiser/board.html` — a STATIC version of the
+board with all current data baked in, no JS API calls. This file is readable when waywiser isn't
+running. It includes a banner: "⚠️ Static snapshot — start waywiser for the live board at localhost:7749"
+
+#### 1.5.5 Startup / Shutdown
+
+- **Extension load:** start HTTP server, log port to stderr: `waywiser/board: live at http://localhost:7749/`
+- **`/kanban open`** command: opens the URL in the default browser (`xdg-open` on Linux, `open` on macOS)
+- **`session_shutdown`:** close the HTTP server gracefully
+- **Port conflict:** if 7749 is taken, try 7749+1, +2, ... up to +10. Log the actual port.
 
 ### 1.6 TUI Widget (improved)
 
@@ -363,10 +444,11 @@ This is a PROMPT instruction, not code — the model decides when to notify base
 | File | Action | Phase |
 |------|--------|-------|
 | `extensions/utils/state.ts` | ADD boards + cards CREATE TABLE in db_() | 1 |
-| `extensions/kanban.ts` | REWRITE — SQLite ops, MD/HTML gen, migration | 1 |
-| `extensions/kanban-html.ts` | CREATE — HTML template generator (isolated) | 1 |
-| `test/waywiser.test.ts` | ADD kanban SQLite tests | 1 |
-| `extensions/kanban.ts` | ADD board management ops | 2 |
+| `extensions/kanban.ts` | REWRITE — SQLite ops, board server, MD gen, migration | 1 |
+| `extensions/kanban-html.ts` | CREATE — interactive SPA HTML generator (isolated) | 1 |
+| `extensions/kanban-server.ts` | CREATE — HTTP server + REST API + SSE | 1 |
+| `test/waywiser.test.ts` | ADD kanban SQLite + API tests | 1 |
+| `extensions/kanban.ts` | ADD board management ops, search, cross-board move | 2 |
 | `extensions/kanban.ts` | ADD notify digest integration | 3 |
 
 ## Success Criteria
@@ -374,10 +456,21 @@ This is a PROMPT instruction, not code — the model decides when to notify base
 - [ ] All existing `/kanban` commands produce identical results (backward compat)
 - [ ] `kanban.json` migrated automatically on first run
 - [ ] `~/.waywiser/boards/default.md` generated and human-readable
-- [ ] `~/.waywiser/board.html` renders correctly in Chrome/Firefox from `file://`
-- [ ] HTML is XSS-safe (card title with `<script>` renders as text)
+- [ ] HTTP server starts on extension load, serves at localhost:7749
+- [ ] `GET /api/cards` returns correct JSON
+- [ ] `POST /api/cards` creates a card, broadcasts SSE event
+- [ ] `PUT /api/cards/:id` updates card, broadcasts SSE event
+- [ ] `DELETE /api/cards/:id` deletes card, broadcasts SSE event
+- [ ] Drag-and-drop moves card between columns (browser-tested)
+- [ ] Inline card editing works (title, notes, priority, due)
+- [ ] Board tabs switch views
+- [ ] SSE events arrive in real-time (within 100ms of mutation)
+- [ ] Static `board.html` snapshot generated as fallback
+- [ ] XSS-safe: card title with `<script>` renders as text (textContent, not innerHTML)
 - [ ] 10 rapid mutations → single file regeneration (debounce works)
 - [ ] TUI widget shows board summary from SQLite
 - [ ] System prompt injection at session_start shows open cards
 - [ ] Subagent spawn + report still works (same spawnCard flow, SQLite-backed)
+- [ ] `/kanban open` opens the board in the default browser
+- [ ] Server binds to 127.0.0.1 only (not accessible from network)
 - [ ] All tests pass
