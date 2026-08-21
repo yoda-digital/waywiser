@@ -1,7 +1,15 @@
 # waywiser
 
+> **Your data never leaves your machine.** Every memory, every preference, every
+> conversation artifact lives in `~/.waywiser/` — a SQLite database you can read
+> with any tool, files you can edit by hand, and a DB you can delete in one
+> command. No telemetry. No cloud sync. No training data. Your LLM runs on your
+> hardware (Ollama) or behind your own API key. MCP integrations run as local
+> processes. Notifications go through your own Telegram bot or desktop. This is
+> the one thing ChatGPT, Claude, and Gemini literally cannot offer you.
+
 **A personal AI agent layered on `pi`** (the `@earendil-works/pi-coding-agent`
-harness). No core changes to pi — 13 tools + 15 commands + 1 operating skill,
+harness). No core changes to pi — 15 tools + 17 commands + 1 operating skill,
 loaded as in-process TypeScript extensions.
 
 Tested in production daily-driver conditions on **Qwen3.8-27B served via a
@@ -23,6 +31,8 @@ Your `pi` session, plus:
 | `delegate_task` | Real subagents: isolated `pi --mode rpc` children, leaf/orchestrator roles, steer/stop, max 3 concurrent |
 | `execute_code` | Batch N tool calls in one turn via a script the child model executes |
 | `web_search` / `web_extract` | Web research (`vsearch` CLI if installed, DuckDuckGo fallback; no deps needed) |
+| MCP loader + `/mcp` | Connect any MCP server (Gmail, Calendar, Notion, Slack…) — tools appear as `server__toolname`; lazy spawn, auto-reconnect, 30s timeout, health status via `/mcp` (config: `~/.waywiser/mcp.json`) |
+| `notify` tool + `/notify` | Deliver notifications via desktop (`notify-send`/`osascript`), Telegram bot, or webhook; quiet hours (DND), rate limiting, urgency override (`critical` bypasses DND), fallback chain, `/notify test` + `/notify setup` |
 | `todo` tool | In-session task board + TODO.md (yields politely if another extension owns `todo`) |
 | `skills_*` tools | Create/view/manage SKILL.md files without leaving the agent |
 | `cronjob` + `/cron` | Scheduled jobs: session-mode timers and system-mode `~/.waywiser/cron/*.cron`; **quiet hours** (global DND window — in-window fires are deferred to window end, one-shot jobs fire exactly once) |
@@ -265,8 +275,7 @@ execute_code 2-call batch, web_search results, SOUL + digest injection` —
 
 Gateway (Telegram/Discord — wrap pi RPC), browser CDP, sandbox backends (pi
 has none by design — "a partial in-process sandbox would be easy to
-misunderstand as a security boundary"), MCP (pi rejected it as its extension
-mechanism), desktop app.
+misunderstand as a security boundary"), desktop app.
 
 ---
 

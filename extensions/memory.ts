@@ -245,7 +245,11 @@ export function registerMemory(pi: ExtensionAPI): void {
 		if (recallDecision(recallState, key, s.throttle)) {
 			let block = "";
 			if (key) {
-				block = selectRecallBlock(db_(), terms, s.recallMaxItems, s.recallMaxChars);
+				try {
+					block = selectRecallBlock(db_(), terms, s.recallMaxItems, s.recallMaxChars);
+				} catch (e) {
+					process.stderr.write(`waywiser/memory: recall query failed (terms=${key.slice(0, 60)}): ${e instanceof Error ? e.message : String(e)}\n`);
+				}
 				if (block) logMem("inject", key.slice(0, 80));   // one row per NEW selection, not per turn
 			}
 			recallState = { ...recallState, block, lastKey: key, lastSelectionTurn: recallState.userTurns };

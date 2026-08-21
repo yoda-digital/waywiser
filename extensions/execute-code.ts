@@ -96,7 +96,7 @@ export default function executeCode(pi: ExtensionAPI): void {
 						remaining,
 					);
 					if (!res.success) return mk(`execute_code: follow_up ${i + 1} rejected: ${JSON.stringify(res).slice(0, 200)}`, true);
-					await state.waitAgentEnd(remaining).catch(() => {});
+					await state.waitAgentEnd(remaining).catch(() => { void state.abort(); });
 				}
 
 				const finalText = (await state.getLastAssistantText(10_000).catch(() => "")) || "(no summary captured)";

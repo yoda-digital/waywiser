@@ -1,0 +1,16 @@
+{
+	"servers": {
+		"filesystem": {
+			"command": "npx",
+			"args": ["-y", "@modelcontextprotocol/server-filesystem", "/home"],
+			"env": {},
+			"enabled": true
+		},
+		"gmail": {
+			"command": "npx",
+			"args": ["-y", "@anthropic/mcp-gmail"],
+			"env": {},
+			"enabled": false
+		}
+	}
+}

@@ -112,7 +112,7 @@ export default function cronjob(pi: ExtensionAPI): void {
 			parts.shift();
 		}
 		if (parts.length !== 5) throw new Error(`schedule must be a 5-field cron expression (m h dom mon dow), got: "${expr}"`);
-		let field: Array<Set<number>> = new Array(5).fill(0).map(() => new Set<number>());
+		const field: Array<Set<number>> = [];
 		const minRanges = [
 			[0, 59], // minute
 			[0, 23], // hour
@@ -183,6 +183,7 @@ export default function cronjob(pi: ExtensionAPI): void {
 		}
 		registry_().log("cron", `fire ${id} (${state.job.name ?? state.job.schedule})`);
 		let text = state.job.prompt;
+		const savedCarryover = state.carryoverText;
 		if (state.carryoverText) {
 			text += `\n\n[waywiser-*cron carryover — state from your previous run; continue from here]\n${state.carryoverText}`;
 			state.carryoverText = undefined;
@@ -193,7 +194,8 @@ export default function cronjob(pi: ExtensionAPI): void {
 				deliverAs: "followUp",
 			});
 		} catch {
-			ctx?.ui?.notify?.(`cron job ${id} fired but agent is unavailable; queued text dropped`, "warning");
+			state.carryoverText = savedCarryover; // restore on delivery failure
+			ctx?.ui?.notify?.(`cron job ${id} fired but agent is unavailable; carryover preserved for next fire`, "warning");
 		}
 		// Re-arm.
 		try {
@@ -213,8 +215,8 @@ export default function cronjob(pi: ExtensionAPI): void {
 				state.nextAt = next.at!;
 				state.job.enabled = 0;
 			}
-		} catch {
-			/* re-arm failure: schedule errors are surfaced at creation */
+		} catch (e) {
+			process.stderr.write(`waywiser/cron: re-arm failed for ${id}: ${e instanceof Error ? e.message : String(e)}\n`);
 		}
 			db_().prepare("UPDATE cronjobs SET enabled = ?, last_run = datetime('now') WHERE id = ?").run(state.job.enabled ?? 1, id);
 	};
@@ -265,8 +267,8 @@ export default function cronjob(pi: ExtensionAPI): void {
 					}
 				}
 			}
-		} catch {
-			/* DB issue; cron just won't restore */
+		} catch (e) {
+			process.stderr.write(`waywiser/cron: failed to restore cron jobs from DB: ${e instanceof Error ? e.message : String(e)}\n`);
 		}
 	});
 

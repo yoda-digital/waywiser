@@ -1,0 +1,17 @@
+{
+	"channels": {
+		"desktop": { "enabled": true },
+		"telegram": {
+			"enabled": false,
+			"token": "YOUR_BOT_TOKEN",
+			"chatId": "YOUR_CHAT_ID"
+		},
+		"webhook": {
+			"enabled": false,
+			"url": "https://example.com/webhook",
+			"headers": {}
+		}
+	},
+	"default": ["desktop"],
+	"rateLimit": 10
+}
