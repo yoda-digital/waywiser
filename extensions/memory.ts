@@ -400,6 +400,13 @@ async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit 
 		const waywiserDbPath = path.join(process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser"), "waywiser.db");
 		const store = new BrainStore(waywiserDbPath);
 
+		// Import embed function for semantic search (cross-language ro/ru/en)
+		let embedFn: ((text: string) => Promise<Float32Array | null>) | undefined;
+		try {
+			const { embed } = await import("../plugins/brain/extensions/brain/embeddings.ts");
+			embedFn = (text: string) => embed(text, config);
+		} catch { /* embeddings module not available */ }
+
 		const result = await recall({
 			prompt: q,
 			cwd: process.cwd(),
@@ -407,6 +414,8 @@ async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit 
 			config: config.recall,
 			scopingConfig: config.scoping,
 			store,
+			embedFn,
+			embeddingsConfig: config.embeddings,
 		});
 
 		store.close();
