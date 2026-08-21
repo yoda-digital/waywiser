@@ -192,6 +192,10 @@ export class BrainStore {
   }
 
   private migrateEpisodesTable(): void {
+    // Waywiser's original episodes table uses column `session`.
+    // Brain's schema uses `session_id`. Accept either — CREATE TABLE IF NOT
+    // EXISTS won't alter an existing table, and the index must match whatever
+    // column the table actually has.
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS episodes (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +204,19 @@ export class BrainStore {
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
-    this.db.exec("CREATE INDEX IF NOT EXISTS idx_episodes_session ON episodes(session_id);");
+    // Check which column exists and index accordingly
+    const cols = this.db.prepare("PRAGMA table_info(episodes)").all() as Array<{ name: string }>;
+    const hasSessionId = cols.some((c) => c.name === "session_id");
+    const hasSession = cols.some((c) => c.name === "session");
+    try {
+      if (hasSessionId) {
+        this.db.exec("CREATE INDEX IF NOT EXISTS idx_episodes_session ON episodes(session_id);");
+      } else if (hasSession) {
+        this.db.exec("CREATE INDEX IF NOT EXISTS idx_episodes_session ON episodes(session);");
+      }
+    } catch {
+      // Index may already exist — ignore
+    }
   }
 
   private migrateBrainTables(): void {
@@ -956,7 +972,15 @@ export class BrainStore {
   // -------------------------------------------------------------------
 
   appendEpisode(sessionId: string, summary: string): void {
-    this.db.prepare("INSERT INTO episodes (session_id, summary) VALUES (?, ?)").run(sessionId, summary);
+    // Waywiser's original episodes table uses `session`; brain's uses `session_id`.
+    // Detect which column exists and use it.
+    try {
+      this.db.prepare("INSERT INTO episodes (session_id, summary) VALUES (?, ?)").run(sessionId, summary);
+    } catch {
+      try {
+        this.db.prepare("INSERT INTO episodes (session, summary) VALUES (?, ?)").run(sessionId, summary);
+      } catch { /* episodes table may not exist at all — best effort */ }
+    }
   }
 
   // -------------------------------------------------------------------
