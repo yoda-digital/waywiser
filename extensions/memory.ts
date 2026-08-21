@@ -10,6 +10,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { db_, homeFile } from "./utils/state.js";
 import { recentMemories, rememberRow, logMem, appendEpisode, memSettings, setMemSettings, READ_POOL_PREDICATE, type MemSettings } from "./utils/state.js";
 import { runChild } from "./utils/llmcall.js";
@@ -392,8 +393,12 @@ async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit 
 		const { recall } = await import("../plugins/brain/extensions/brain/recall.ts");
 
 		const config = loadBrainConfig();
-		// Open Brain's store on the same DB that Waywiser uses
-		const store = new BrainStore(config.dbPath);
+		// CRITICAL: use the SAME DB that Waywiser's memory tool writes to.
+		// Waywiser's db_() always opens waywiserHome()/waywiser.db (state.ts:30).
+		// Brain's config.dbPath may point elsewhere (e.g. an Obsidian vault copy).
+		// The BrainStore here must read from the DB that `remember` wrote to.
+		const waywiserDbPath = path.join(process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser"), "waywiser.db");
+		const store = new BrainStore(waywiserDbPath);
 
 		const result = recall({
 			prompt: q,
@@ -406,7 +411,10 @@ async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit 
 
 		store.close();
 
-		if (!result.items.length) return { text: "No memories matched." };
+		if (!result.items.length) {
+			// Brain found nothing — try fallback in case FTS index is stale
+			return runRecallText(db, q, limit);
+		}
 		return {
 			text: result.items
 				.map((item) => {
