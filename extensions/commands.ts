@@ -134,7 +134,7 @@ export default function commands(pi: ExtensionAPI): void {
 					ctx.ui.notify(formatConsolidateReport(rep), "info");
 					return;
 				}
-				const out = "query" in r ? await runRecallText(db_(), r.query) : await memAction(db_, r.action, r.p);
+				const out = "query" in r ? await runRecallText(db_(), r.query) : await memAction(db_(), r.action, r.p);
 				ctx.ui.notify(out.text, out.isErr ? "error" : "info");
 			} catch (e) {
 				ctx.ui.notify(`memory error: ${String(e)}`, "error");

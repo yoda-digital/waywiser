@@ -204,11 +204,19 @@ export function recentMemories(
 export const READ_POOL_PREDICATE =
 	"COALESCE(m.confidence,0.5) >= 0.5 AND NOT EXISTS (SELECT 1 FROM memories s WHERE s.supersedes_id = m.id AND s.source != 'external')";
 
-/** Read a JSON file, returning fallback when missing/invalid. */
+/** Read a JSON file, returning fallback when missing. Logs a warning on parse errors
+ *  so malformed config files don't silently disappear. */
 export function readJSON<T>(file: string, fallback: T): T {
+	let raw: string;
 	try {
-		return JSON.parse(fs.readFileSync(file, "utf-8")) as T;
+		raw = fs.readFileSync(file, "utf-8");
 	} catch {
+		return fallback; // ENOENT / permission — expected when file doesn't exist yet
+	}
+	try {
+		return JSON.parse(raw) as T;
+	} catch (e) {
+		process.stderr.write(`waywiser: ${file} contains invalid JSON, using defaults: ${e instanceof Error ? e.message : String(e)}\n`);
 		return fallback;
 	}
 }
