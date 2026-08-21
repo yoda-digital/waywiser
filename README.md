@@ -10,79 +10,202 @@ Extends pi with persistent memory, task delegation, project boards, MCP
 integrations, scheduled jobs, and notifications — all as in-process TypeScript
 extensions. Nothing patches pi's core.
 
-## Install
+## Architecture
+
+```
+waywiser/
+├── extensions/              ← Core agent (memory, delegation, kanban, etc.)
+├── skills/                  ← Core skills
+├── bin/waywiser             ← Launcher (auto-discovers plugins)
+├── config/                  ← Default configs
+│
+└── plugins/                 ← Vendor plugins (auto-loaded by launcher)
+    └── brain/               ← Self-learning brain plugin
+        ├── extensions/      ← Pi extension (18 modules)
+        ├── skills/          ← Brain skill
+        ├── test/            ← 315 tests
+        └── plugins/         ← Brain's own sub-plugins
+            └── obsidian/    ← Obsidian integration (plugin-in-plugin)
+```
+
+## Install from Source
 
 Node >= 22.5, `pi` on PATH.
 
-```bash
-npm install -g waywiser
-waywiser                    # interactive TUI
-waywiser -p "do something"  # one-shot
-```
+### Level 1: Waywiser Core
 
-From source:
+The base agent — memory, delegation, kanban, MCP, cron, notifications.
 
 ```bash
-cd waywiser && npm install && bash bin/waywiser
+git clone git@github.com:yoda-digital/waywiser.git
+cd waywiser
+npm install
+bin/waywiser
 ```
 
-## Features
+**What you get:**
+- Cross-session memory (FTS5)
+- Task delegation (3 concurrent subagents)
+- Kanban boards (web dashboard + TUI + markdown)
+- MCP integrations (Gmail, Calendar, Notion, etc.)
+- Scheduled jobs (cron + one-shot timers)
+- Desktop/Telegram/webhook notifications
+- SOUL identity persistence
+
+### Level 2: Waywiser + Brain Plugin
+
+Adds self-learning, procedural memory, auto-evolution of skills, and an Obsidian-compatible vault. The launcher auto-discovers Brain from `plugins/brain/`.
+
+```bash
+git clone git@github.com:yoda-digital/waywiser.git
+cd waywiser
+npm install
+bin/waywiser    # Brain loads automatically
+```
+
+No extra steps — `bin/waywiser` scans `plugins/` and loads everything it finds. On first run, it creates `~/.waywiser/brain.json` from the example config.
+
+**What Brain adds:**
+- Self-learning at `agent_settled` boundaries (not mid-turn)
+- Reciprocal rank fusion recall (lexical + scope + usage + confidence + recency)
+- Procedural memory ("when X, prefer Y over Z") with evidence tracking
+- Auto-evolution: mature procedures → candidate skills → competitive evaluation → promotion
+- Obsidian-native vault sync (wikilinks, Properties, callouts, mermaid diagrams, MOCs, canvas)
+- `/brain status`, `/brain sync`, `/brain consolidate`, `/brain evolve *` commands
+- `evolve` tool for evolution inspection
+
+**Verify Brain loaded:**
+```
+/brain status
+```
+
+### Level 3: Waywiser + Brain + Obsidian Plugin
+
+The Obsidian plugin is a plugin OF Brain (not of Waywiser directly). It lives inside Brain's distribution at `plugins/brain/plugins/obsidian/`.
+
+```bash
+git clone git@github.com:yoda-digital/waywiser.git
+cd waywiser
+npm install
+
+# Build the Obsidian plugin
+cd plugins/brain/plugins/obsidian
+npm install
+npm run build
+cd ../../../..
+
+# Install in your Obsidian vault
+VAULT="/path/to/your/vault"
+mkdir -p "$VAULT/.obsidian/plugins/waywiser-brain"
+cp plugins/brain/plugins/obsidian/main.js \
+   plugins/brain/plugins/obsidian/manifest.json \
+   plugins/brain/plugins/obsidian/styles.css \
+   plugins/brain/plugins/obsidian/sql-wasm.wasm \
+   "$VAULT/.obsidian/plugins/waywiser-brain/"
+
+# Point Brain's vault at your Obsidian vault
+cat > ~/.waywiser/brain.json << 'EOF'
+{
+  "markdownRoot": "/path/to/your/vault/Brain/"
+}
+EOF
+
+# Launch
+bin/waywiser
+```
+
+Then enable "Waywiser Brain" in Obsidian Settings → Community Plugins.
+
+**What the Obsidian plugin adds:**
+- Brain Dashboard sidebar (stats, contradictions, evolution, memories, procedures, activity)
+- 7 command palette entries (Brain: Refresh, Stats, Dashboard, Contradictions, Evolution, Activity, Go to Memory)
+- Ribbon icon (🧠 quick-access)
+- Status bar widget (`🧠 142m 3p 2s`, click to open dashboard)
+- Confidence bars + status badges (rendered in reading mode)
+- Graph view coloring via `#brain/` tag hierarchy
+
+### Quick Reference
+
+| Feature | Core | + Brain | + Obsidian |
+|---------|:----:|:-------:|:----------:|
+| Cross-session memory | ✅ | ✅ | ✅ |
+| Delegation & subagents | ✅ | ✅ | ✅ |
+| Kanban boards | ✅ | ✅ | ✅ |
+| MCP integrations | ✅ | ✅ | ✅ |
+| Cron jobs | ✅ | ✅ | ✅ |
+| Notifications | ✅ | ✅ | ✅ |
+| SOUL identity | ✅ | ✅ | ✅ |
+| Self-learning (agent_settled) | — | ✅ | ✅ |
+| Procedural memory | — | ✅ | ✅ |
+| Skill auto-evolution | — | ✅ | ✅ |
+| Vault markdown sync | — | ✅ | ✅ |
+| Wikilinks + mermaid | — | ✅ | ✅ |
+| `/brain` commands | — | ✅ | ✅ |
+| Dashboard sidebar | — | — | ✅ |
+| Command palette (7 cmds) | — | — | ✅ |
+| Real-time DB refresh | — | — | ✅ |
+| Graph view coloring | — | — | ✅ |
+| Confidence bars | — | — | ✅ |
+
+## Plugin System
+
+Plugins live in `plugins/`. The launcher auto-discovers them:
+
+```
+plugins/
+└── <plugin-name>/
+    ├── extensions/<name>/index.ts   → loaded as Pi extension
+    ├── skills/<name>/SKILL.md       → loaded as Pi skill
+    ├── config/*.example.json        → copied to ~/.waywiser/ on first run
+    └── plugins/                     → sub-plugins (plugin-in-plugin)
+        └── <sub-plugin>/
+```
+
+To disable a plugin, rename or remove its directory from `plugins/`.
+
+## Features (Core)
 
 ### Memory
 
 Cross-session memory with full-text search (SQLite FTS5). Waywiser remembers
-your preferences, project context, and lessons across sessions without you
-asking it to.
+your preferences, project context, and lessons across sessions.
 
-- Automatic writes: a turn-end gate extracts durable facts from the
-  conversation and stores them at controlled confidence levels
+- Automatic writes: a turn-end gate extracts durable facts
 - Selective recall: BM25-ranked relevant memories injected per turn
-- Consolidation: dedup, decay, merge — run `/memory consolidate` periodically
-- Full audit trail in `memlog`; readable exports in `MEMORY.md` and `USER.md`
+- Consolidation: dedup, decay, merge — run `/memory consolidate`
+- Full audit trail in `memlog`; readable exports in `MEMORY.md`
 
-### Kanban board
+### Kanban Board
 
-Project boards backed by SQLite with three views of the same data:
+Project boards backed by SQLite with three views:
 
-- **Web dashboard** at `http://localhost:7749/` — drag-and-drop columns,
-  inline editing, card CRUD, board tabs, real-time SSE updates, dark/light
-  theme. Runs while waywiser is active.
-- **Markdown files** at `~/.waywiser/boards/` — always readable, even when
-  waywiser is off. Open them in your editor or commit them to git.
-- **TUI** — `/kanban` in the terminal, same operations.
-
-Cards have types (task, idea, bug), priorities, due dates with overdue
-detection, notes, and reports. `assign subagent` spawns a detached worker
-that files its results on the card.
+- **Web dashboard** at `http://localhost:7749/` — drag-and-drop, real-time SSE
+- **Markdown** at `~/.waywiser/boards/` — readable offline
+- **TUI** — `/kanban` in terminal
 
 ### Delegation
 
 Spawn isolated pi children for research, code tasks, or anything that would
-flood your main context window. Up to 3 concurrent subagents, each with their
-own session.
+flood your main context. Up to 3 concurrent subagents.
 
-### MCP integrations
+### MCP Integrations
 
-Connect any MCP server — Gmail, Calendar, Notion, filesystem, whatever. Tools
-appear as `server__toolname` and work like native tools. Config lives in
+Connect any MCP server — Gmail, Calendar, Notion, filesystem. Config lives in
 `~/.waywiser/mcp.json`. Servers spawn lazily and reconnect on failure.
 
 ### Notifications
 
-Desktop (`notify-send`), Telegram bot, or webhook. Quiet hours respected, rate
-limited, urgency override available. Set up with `/notify setup`, test with
-`/notify test`.
+Desktop (`notify-send`), Telegram bot, or webhook. Quiet hours respected.
 
-### Scheduled jobs
+### Scheduled Jobs
 
-Five-field cron expressions or one-shot `@ISO` timestamps. Session-mode timers
-fire while pi runs; system-mode `.cron` files integrate with your OS cron.
-Quiet hours defer non-critical fires.
+Cron expressions or one-shot `@ISO` timestamps. Session-mode timers and
+system-mode `.cron` files.
 
 ### Identity
 
 `SOUL.md` persists across restarts. The agent appends preferences and lessons
-but never rewrites what's there. You can edit it by hand.
+but never rewrites what's there.
 
 ## Configuration
 
@@ -90,25 +213,28 @@ All config lives in `~/.waywiser/`:
 
 | File | Purpose |
 |---|---|
-| `waywiser.db` | SQLite database (memory, boards, cron, goals) |
+| `waywiser.db` | SQLite database (memory, boards, cron, goals, brain) |
+| `brain.json` | Brain plugin config (auto-created from example) |
 | `SOUL.md` | Agent identity and preferences |
 | `MEMORY.md` | Append-only memory log |
-| `USER.md` | Generated preferences export |
 | `mcp.json` | MCP server configuration |
 | `notify.json` | Notification channel setup |
-| `quiet.json` | Quiet hours window |
 | `mem.json` | Memory subsystem tuning |
-| `boards/` | Markdown board exports |
-| `board.html` | Static board snapshot (offline fallback) |
+| `brain/` | Brain vault (Obsidian-compatible markdown) |
+| `skills/` | Evolved skills (active/candidates/retired) |
 
 ## Tests
 
 ```bash
-npm test
-```
+# Core tests
+npm test                                           # 54 tests
 
-54 tests covering memory, kanban, cron, and a smoke test asserting all tools
-and commands register.
+# Brain plugin tests
+cd plugins/brain && node --test test/*.test.ts      # 315 tests
+
+# Everything
+npm test && cd plugins/brain && node --test test/*.test.ts  # 369 total
+```
 
 ## License
 

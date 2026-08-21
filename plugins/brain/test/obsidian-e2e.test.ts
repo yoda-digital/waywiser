@@ -541,7 +541,7 @@ describe("Obsidian E2E", () => {
   // Tier 2: Obsidian plugin build artifacts
   // -------------------------------------------------------------------
   describe("Tier 2: Obsidian plugin build artifacts", () => {
-    const pluginRoot = path.resolve(import.meta.dirname, "../../obsidian-plugin");
+    const pluginRoot = path.resolve(import.meta.dirname, "../plugins/obsidian");
 
     it("has a built main.js bundle", () => {
       const mainJs = path.join(pluginRoot, "main.js");
