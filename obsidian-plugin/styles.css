@@ -1,0 +1,65 @@
+/* Waywiser Brain Plugin Styles */
+
+.brain-dashboard {
+  padding: 16px;
+}
+
+.brain-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.brain-stat-card {
+  background: var(--background-secondary);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.brain-stat-card .stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-accent);
+}
+
+.brain-stat-card .stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.brain-memory-list,
+.brain-procedure-list {
+  list-style: none;
+  padding: 0;
+}
+
+.brain-memory-item,
+.brain-procedure-item {
+  padding: 8px 12px;
+  border-left: 3px solid var(--background-modifier-border);
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+.brain-memory-item:hover,
+.brain-procedure-item:hover {
+  background: var(--background-secondary);
+}
+
+.brain-memory-item[data-confidence="high"] { border-left-color: var(--color-green); }
+.brain-memory-item[data-confidence="medium"] { border-left-color: var(--color-yellow); }
+.brain-memory-item[data-confidence="low"] { border-left-color: var(--color-red); }
+
+.brain-procedure-item[data-status="mature"] { border-left-color: var(--color-green); }
+.brain-procedure-item[data-status="reinforced"] { border-left-color: var(--color-blue); }
+.brain-procedure-item[data-status="tentative"] { border-left-color: var(--text-muted); }
+.brain-procedure-item[data-status="contradicted"] { border-left-color: var(--color-red); }
+
+/* Status callouts in rendered markdown */
+.callout[data-callout="brain-active"] { --callout-color: var(--color-green); }
+.callout[data-callout="brain-contradicted"] { --callout-color: var(--color-red); }
+.callout[data-callout="brain-frozen"] { --callout-color: var(--color-orange); }

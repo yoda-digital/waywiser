@@ -1,0 +1,19 @@
+{
+  "name": "obsidian-waywiser-brain",
+  "version": "1.0.0",
+  "description": "Obsidian plugin for Waywiser Brain",
+  "type": "module",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "node esbuild.config.mjs production"
+  },
+  "devDependencies": {
+    "obsidian": "latest",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "sql.js": "^1.10.0"
+  }
+}

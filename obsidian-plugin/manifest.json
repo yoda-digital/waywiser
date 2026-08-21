@@ -1,0 +1,10 @@
+{
+  "id": "waywiser-brain",
+  "name": "Waywiser Brain",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Dashboard, commands, and graph integration for Waywiser Brain's self-learning memory system.",
+  "author": "YODA Digital",
+  "authorUrl": "https://github.com/yoda-digital",
+  "isDesktopOnly": true
+}
