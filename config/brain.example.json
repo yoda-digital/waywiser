@@ -1,0 +1,98 @@
+{
+	"markdownRoot": "~/.waywiser/brain/",
+	"dbPath": "~/.waywiser/waywiser.db",
+	"skillsRoot": "~/.waywiser/skills/",
+
+	"modules": {
+		"trace": true,
+		"learner": true,
+		"procedures": true,
+		"recovery": true,
+		"consolidate": true,
+		"skills": true,
+		"evolve": true,
+		"eval": true,
+		"vault": true,
+		"cognition": true
+	},
+
+	"learning": {
+		"boundary": "agent_settled",
+		"maxReflectionsPerSession": 10,
+		"maxMemoriesPerRun": 3,
+		"gateTimeoutMs": 12000,
+		"minObservationsForReflection": 1
+	},
+
+	"recall": {
+		"mode": "selective",
+		"maxItems": 8,
+		"maxChars": 2000,
+		"fusionWeights": {
+			"lexical": 1.0,
+			"scope": 0.8,
+			"usage": 0.5,
+			"confidence": 0.3,
+			"recency": 0.2
+		},
+		"useCustomMessage": true
+	},
+
+	"provenance": {
+		"externalConfidence": 0.3,
+		"userConfidence": 0.9,
+		"agentConfidence": 0.7,
+		"environmentConfidence": 0.6
+	},
+
+	"scoping": {
+		"defaultScope": "infer",
+		"projectDetection": "git-root",
+		"scopeBoost": 2.0
+	},
+
+	"evolution": {
+		"maturity": {
+			"minPositiveObservations": 3,
+			"minIndependentExperiences": 2,
+			"minSuccessRatio": 0.75,
+			"requireNoContradictions": true
+		},
+		"evalCasesPerCandidate": 5,
+		"promotionPolicy": "auto",
+		"promotionBoundary": "next-session"
+	},
+
+	"vault": {
+		"syncOnStart": true,
+		"syncOnShutdown": true,
+		"conflictResolution": "human-wins",
+		"structure": {
+			"semantic": "semantic",
+			"procedures": "procedures",
+			"projects": "projects",
+			"entities": "entities",
+			"hypotheses": "hypotheses",
+			"archive": "archive",
+			"skills": "skills"
+		}
+	},
+
+	"cognition": {
+		"poolSize": 2,
+		"model": null,
+		"thinkingLevel": null,
+		"idleTtlMs": 600000
+	},
+
+	"soul": {
+		"narrowMode": true,
+		"snapshotAtStart": true
+	},
+
+	"consolidation": {
+		"batchSize": 50,
+		"runOnShutdown": true,
+		"dryRunByDefault": false
+	}
+}

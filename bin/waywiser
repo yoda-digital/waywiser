@@ -49,6 +49,27 @@ if grep -q "I am \*\*Hermes\*\*" "$WAYWISER_HOME/SOUL.md" 2>/dev/null; then
 	echo "waywiser: restamped migrated identity to Waywiser" >&2
 fi
 
+# First-run brain config: copy example if no brain.json exists yet.
+if [ ! -f "$WAYWISER_HOME/brain.json" ] && [ -f "$WAYWISER_PKG_DIR/config/brain.example.json" ]; then
+	cp "$WAYWISER_PKG_DIR/config/brain.example.json" "$WAYWISER_HOME/brain.json"
+	echo "waywiser: created default brain config at $WAYWISER_HOME/brain.json" >&2
+fi
+
+# Brain extension (self-learning, auto-evolution, vault sync)
+BRAIN_EXT="$WAYWISER_PKG_DIR/brain/extensions/brain/index.ts"
+BRAIN_SKILL="$WAYWISER_PKG_DIR/brain/skills/brain/SKILL.md"
+
+BRAIN_ARGS=()
+if [ -f "$BRAIN_EXT" ]; then
+	BRAIN_ARGS+=(--extension "$BRAIN_EXT")
+	if [ -f "$BRAIN_SKILL" ]; then
+		BRAIN_ARGS+=(--skill "$BRAIN_SKILL")
+	fi
+	# Ensure brain directories exist
+	mkdir -p "$WAYWISER_HOME/brain" "$WAYWISER_HOME/skills/active" "$WAYWISER_HOME/skills/candidates" "$WAYWISER_HOME/skills/retired"
+fi
+
 exec pi --extension "$WAYWISER_PKG_DIR/extensions/index.ts" \
+   "${BRAIN_ARGS[@]}" \
    --skill "$WAYWISER_PKG_DIR/skills/waywiser/SKILL.md" \
    "$@"
