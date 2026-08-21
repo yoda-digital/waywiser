@@ -54,9 +54,132 @@ Brain is a Pi package with 18 composable modules (5,666 lines of TypeScript):
 | **index** | Root extension — Pi event lifecycle, `evolve` tool, `/brain` commands |
 | **types** | All shared TypeScript types |
 
+## Installation
+
+### Option A: Brain + Waywiser (recommended)
+
+Brain ships inside the Waywiser repo. When both are loaded, Brain owns the learning loop and Waywiser provides the agent capabilities (delegation, code execution, web, kanban, etc.).
+
+**1. Clone the repo:**
+```bash
+git clone git@github.com:yoda-digital/waywiser.git
+cd waywiser
+npm install           # Waywiser deps
+cd brain && npm install  # Brain has no deps currently, but future-proof
+cd ..
+```
+
+**2. Launch with both extensions:**
+```bash
+# Option 1: Use the waywiser launcher (loads Waywiser's extensions + skill)
+# Then add Brain's extension and skill paths:
+pi --extension extensions/index.ts \
+   --extension brain/extensions/brain/index.ts \
+   --skill skills/waywiser/SKILL.md \
+   --skill brain/skills/brain/SKILL.md
+```
+
+Or modify `bin/waywiser` to include Brain automatically — add to the `exec pi` line:
+```bash
+exec pi --extension "$WAYWISER_PKG_DIR/extensions/index.ts" \
+   --extension "$WAYWISER_PKG_DIR/brain/extensions/brain/index.ts" \
+   --skill "$WAYWISER_PKG_DIR/skills/waywiser/SKILL.md" \
+   --skill "$WAYWISER_PKG_DIR/brain/skills/brain/SKILL.md" \
+   "$@"
+```
+
+**3. Verify it works:**
+```bash
+waywiser  # or the pi command above
+# Then run: /brain status
+```
+
+### Option B: Brain standalone (without Waywiser)
+
+Brain works as an independent Pi package. It provides the self-learning loop, memory, procedures, evolution, and vault sync — without Waywiser's delegation, code execution, or kanban features.
+
+```bash
+cd waywiser/brain
+pi --extension extensions/brain/index.ts \
+   --skill skills/brain/SKILL.md
+```
+
+Brain will:
+- Create `~/.waywiser/waywiser.db` (or wherever `dbPath` points)
+- Create `~/.waywiser/brain/` for vault markdown
+- Create `~/.waywiser/skills/` for evolved skills
+- Register on Pi events (`agent_settled`, `tool_call`, etc.)
+- Provide the `evolve` tool and `/brain` commands
+
+### Option C: Add the Obsidian plugin
+
+The Obsidian plugin is independent of how you run Brain — it reads `brain.db` directly.
+
+**1. Build the plugin:**
+```bash
+cd waywiser/obsidian-plugin
+npm install
+npm run build
+```
+
+**2. Install in Obsidian:**
+```bash
+# Create the plugin directory in your vault
+mkdir -p /path/to/your/vault/.obsidian/plugins/waywiser-brain
+
+# Copy the required files
+cp main.js manifest.json styles.css sql-wasm.wasm \
+   /path/to/your/vault/.obsidian/plugins/waywiser-brain/
+```
+
+**3. Enable in Obsidian:**
+- Open Obsidian Settings → Community Plugins
+- Enable "Waywiser Brain"
+- Configure the database path if not auto-detected
+
+**4. Point your vault at Brain's markdown:**
+
+Set Brain's `markdownRoot` to a folder inside your Obsidian vault:
+```json
+// ~/.waywiser/brain.json
+{
+  "markdownRoot": "/path/to/your/vault/Brain/"
+}
+```
+
+Or make your entire vault the brain:
+```json
+{
+  "markdownRoot": "/path/to/your/vault/",
+  "dbPath": "/path/to/your/vault/.brain.db"
+}
+```
+
+### Quick Reference: What You Get With Each Component
+
+| Feature | Brain only | Brain + Waywiser | + Obsidian Plugin |
+|---------|-----------|-----------------|-------------------|
+| Self-learning from Pi events | ✅ | ✅ | ✅ |
+| Memory recall (rank fusion) | ✅ | ✅ | ✅ |
+| Procedural memory | ✅ | ✅ | ✅ |
+| Skill evolution | ✅ | ✅ | ✅ |
+| Vault markdown sync | ✅ | ✅ | ✅ |
+| `/brain` commands | ✅ | ✅ | ✅ |
+| Delegation & subagents | ❌ | ✅ | ✅ |
+| Code execution | ❌ | ✅ | ✅ |
+| Web search/fetch | ❌ | ✅ | ✅ |
+| Kanban boards | ❌ | ✅ | ✅ |
+| SOUL identity | ❌ | ✅ | ✅ |
+| Dashboard sidebar | ❌ | ❌ | ✅ |
+| Command palette (7 cmds) | ❌ | ❌ | ✅ |
+| Real-time DB refresh | ❌ | ❌ | ✅ |
+| Status bar widget | ❌ | ❌ | ✅ |
+| Confidence bars | ❌ | ❌ | ✅ |
+| Graph view coloring | ❌ | ❌ | ✅ |
+
 ## Test Coverage
 
-**269 unit tests** across 16 test files + **54 waywiser regression tests** = **323 total, 0 failures**.
+**315 tests** across 17 test files — **0 failures**.
 
 ```bash
 # Brain tests
