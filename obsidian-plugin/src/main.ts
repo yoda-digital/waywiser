@@ -4,6 +4,8 @@ import { DBWatcher } from "./watcher";
 import { BrainSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, type WaywiserBrainSettings } from "./types";
 import { BrainDashboardView, BRAIN_VIEW_TYPE } from "./dashboard-view";
+import { registerBrainCommands } from "./commands";
+import { registerGraphIntegration } from "./graph-integration";
 
 export default class WaywiserBrainPlugin extends Plugin {
   settings: WaywiserBrainSettings = DEFAULT_SETTINGS;
@@ -56,7 +58,12 @@ export default class WaywiserBrainPlugin extends Plugin {
       this.statusBarEl.style.cursor = "pointer";
     }
 
-    // Register graph hooks in Task 25
+    // Register commands
+    registerBrainCommands(this);
+
+    // Register graph integration
+    registerGraphIntegration(this);
+
     console.log("Waywiser Brain plugin loaded");
   }
 

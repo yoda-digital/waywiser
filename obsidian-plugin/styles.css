@@ -132,3 +132,68 @@
 .brain-evolution-list li {
   padding: 4px 0;
 }
+
+/* Graph view coloring via tag groups */
+/* Users can set up tag-based color groups in Obsidian's graph settings:
+   - brain/memory → blue
+   - brain/procedure → green
+   - brain/scope/project → orange
+   - brain/source/external → red
+   These are documented in the plugin README. */
+
+/* Confidence bar (rendered in reading mode) */
+.brain-confidence-bar {
+  height: 4px;
+  width: 100%;
+  background: var(--background-modifier-border);
+  border-radius: 2px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.brain-confidence-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Status badge */
+.brain-status-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  color: var(--text-on-accent);
+}
+
+.brain-status-active { background: var(--color-green); }
+.brain-status-frozen { background: var(--color-blue); }
+.brain-status-archived { background: var(--text-muted); }
+.brain-status-superseded { background: var(--text-faint); }
+.brain-status-contradicted { background: var(--color-red); }
+.brain-status-mature { background: var(--color-green); }
+.brain-status-reinforced { background: var(--color-blue); }
+.brain-status-tentative { background: var(--text-muted); }
+
+/* Memory search modal */
+.brain-memory-search-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.brain-memory-search-item {
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.brain-memory-search-item:hover {
+  background: var(--background-secondary);
+}
+
+.brain-contradiction-modal-item {
+  padding: 8px 0;
+}
