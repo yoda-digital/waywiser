@@ -419,6 +419,7 @@ export default function kanban(pi: ExtensionAPI): void {
 				case "stats": return run(ops.stats());
 				case "clear-done": return run(ops.clearDone());
 				case "refresh":
+				case "":
 				case undefined: {
 					ensureWidget(ctx);
 					const b = loadBoard();
