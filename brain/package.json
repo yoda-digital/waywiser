@@ -1,0 +1,23 @@
+{
+  "name": "@yoda-digital/waywiser-brain",
+  "version": "1.0.0",
+  "description": "Waywiser Brain — self-learning, auto-evolving brain extension for Pi",
+  "keywords": ["pi-package", "pi-extension", "brain", "self-learning", "evolution"],
+  "type": "module",
+  "license": "MIT",
+  "pi": {
+    "extensions": ["extensions"],
+    "skills": ["skills"]
+  },
+  "engines": { "node": ">=22.5" },
+  "files": ["extensions", "skills", "README.md"],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.84.2"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2"
+  }
+}
