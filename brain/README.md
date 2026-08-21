@@ -168,6 +168,106 @@ Every piece of knowledge has deterministic, traceable provenance:
 
 The LLM proposes meaning but **cannot choose its own authority level** — provenance is computed from the Pi event type, never from the model's output.
 
+## Obsidian Integration
+
+Brain provides two tiers of Obsidian integration:
+
+### Tier 1: Obsidian-Native Markdown (built into vault.ts)
+
+Brain's vault sync produces files designed for Obsidian, not just readable by it:
+
+| Feature | What It Does |
+|---------|-------------|
+| **`[[Wikilinks]]`** | Memories link to related procedures and evidence experiences |
+| **Typed Properties** | YAML frontmatter with `tags` arrays, `cssclasses`, `aliases` |
+| **Tag hierarchy** | `#brain/memory/fact`, `#brain/procedure/mature`, `#brain/scope/project` |
+| **Callout blocks** | `> [!success]` for active, `> [!warning]` for contradicted, `> [!caution]` for frozen |
+| **Mermaid diagrams** | Evidence chain graphs for memories, trigger/avoid/prefer flows for procedures |
+| **MOC index files** | `_MOC-semantic.md` and `_MOC-procedures.md` with wikilinks grouped by type |
+| **Canvas** | `_brain-overview.canvas` with visual overview of memories and procedures |
+
+Example rendered memory:
+```markdown
+---
+id: 42
+kind: decision
+scope: project
+project: waywiser
+confidence: 0.91
+status: active
+source: user
+tags:
+  - brain/memory/decision
+  - brain/scope/project
+  - brain/source/user
+cssclasses:
+  - brain-memory
+  - brain-active
+aliases:
+  - decision-use-postgresql-for-the-database
+created: 2026-08-15T10:30:00Z
+accessed: 2026-08-21T09:00:00Z
+---
+
+> [!success] Active — Confidence 0.91
+> Source: user | Accessed: 2026-08-21T09:00:00Z
+
+Use PostgreSQL for the database.
+
+## Related
+[[procedure-large-file-read]]
+
+## Evidence Chain
+```mermaid
+graph LR
+    exp_83["exp_83"] -->|created_from| mem_42(("Memory 42"))
+    exp_91["exp_91"] -->|reinforced_by| mem_42
+```
+```
+
+### Tier 2: Obsidian Plugin (`waywiser/obsidian-plugin/`)
+
+A full Obsidian plugin that reads `brain.db` directly:
+
+| Feature | Description |
+|---------|-------------|
+| **Brain Dashboard** | Sidebar view with stats, contradictions, evolution status, memories, procedures, activity log |
+| **Real-time sync** | Watches brain.db for changes, auto-refreshes dashboard |
+| **7 commands** | Refresh, stats, dashboard, contradictions, evolution, activity, go-to-memory |
+| **Ribbon icon** | 🧠 quick-access to open the dashboard |
+| **Status bar** | `🧠 142m 3p 2s` — memory/procedure/skill counts, click to open dashboard |
+| **Confidence bars** | Visual confidence indicator rendered at the top of brain files |
+| **Status badges** | Colored status labels (ACTIVE, CONTRADICTED, MATURE, etc.) |
+| **Graph coloring** | Tag-based color groups for graph view (`brain/memory`, `brain/procedure`, etc.) |
+
+#### Plugin Installation
+
+```bash
+cd waywiser/obsidian-plugin
+npm install
+npm run build
+```
+
+Then copy `main.js`, `manifest.json`, `styles.css`, and `sql-wasm.wasm` to your Obsidian vault's `.obsidian/plugins/waywiser-brain/` directory.
+
+#### Plugin Settings
+
+- **Database path** — auto-detected from `~/.waywiser/waywiser.db`, or set manually
+- **Auto-refresh** — watch brain.db for changes (default: on, 5s interval)
+- **Status bar** — show/hide the status bar widget
+- **Graph coloring** — enable/disable tag-based graph node coloring
+
+#### Graph View Setup
+
+To color graph nodes by brain category, add tag-based color groups in Obsidian's graph settings:
+
+| Tag Group | Suggested Color |
+|-----------|----------------|
+| `brain/memory` | Blue |
+| `brain/procedure` | Green |
+| `brain/scope/project` | Orange |
+| `brain/source/external` | Red |
+
 ## Bug Fixes (from Waywiser audit)
 
 Brain's implementation fixes 7 bugs identified in the Waywiser codebase:
@@ -179,6 +279,29 @@ Brain's implementation fixes 7 bugs identified in the Waywiser codebase:
 5. ✅ Version mismatch (0.1.0 vs 1.0.0) fixed
 6. ✅ `/waywiser status` reads SQLite, not legacy `kanban.json`
 7. ✅ Peer dependency floor raised to `>=0.84.2`
+
+## Test Coverage
+
+**315 tests** across 17 test files — 0 failures.
+
+| Suite | Tests | Coverage |
+|-------|-------|----------|
+| config | 16 | Defaults, deep-merge, env overrides, validation |
+| store | 36 | Schema, CRUD, FTS unicode, migrations |
+| provenance | 14 | Tool/event classification, confidence |
+| trace + recovery | 27 | Target extraction, recovery linking, branch safety |
+| recall | 16 | Rank fusion, unicode tokenizer, access bumps |
+| learner | 15 | Deterministic extraction, authority hierarchy |
+| procedures | 16 | Evidence, maturity, status transitions |
+| consolidate | 12 | Cleanup, near-duplicate, contradiction |
+| skills | 17 | Lifecycle, promote/reject/rollback |
+| eval | 19 | Case generation, hard checks, scoring |
+| evolve | 16 | Validation, promotion pipeline |
+| vault | 32 | Render, parse, sync, MOC, canvas |
+| policy | 17 | Scope inference, promotion, safety |
+| smoke | 13 | Full module loading, end-to-end flows |
+| obsidian-e2e | 46 | Wikilinks, properties, callouts, mermaid, MOCs, canvas, plugin |
+| prompts | 3 | Context rendering |
 
 ## License
 
