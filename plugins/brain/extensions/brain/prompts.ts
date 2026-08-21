@@ -164,20 +164,24 @@ Reply JSON only: {"recoveries": [{"successId": "...", "failureId": "...", "reaso
 export function renderBrainContext(recalled: RecallResult): string {
   if (!recalled.items.length) return "";
 
-  const lines: string[] = ["<waywiser-brain-context>"];
+  const lines: string[] = [
+    "<waywiser-brain-context>",
+    "IMPORTANT: The following are YOUR memories from previous sessions. Use them to answer the user's question. Do NOT search for this information elsewhere — you already know it.",
+    "",
+  ];
 
   const memories = recalled.items.filter(i => i.type === "memory");
   const procedures = recalled.items.filter(i => i.type === "procedure");
 
   if (memories.length) {
-    lines.push("## Relevant Memories");
+    lines.push("## Your Memories (use these first)");
     for (const m of memories) {
       lines.push(`- [${m.scope}] ${m.content}`);
     }
   }
 
   if (procedures.length) {
-    lines.push("## Relevant Procedures");
+    lines.push("## Your Learned Procedures (apply these when relevant)");
     for (const p of procedures) {
       lines.push(`- ${p.content}`);
     }

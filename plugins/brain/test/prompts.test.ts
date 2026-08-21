@@ -39,8 +39,8 @@ describe("prompts", () => {
         memoryIds: [1], procedureIds: [], revision: 1,
       };
       const result = renderBrainContext(recalled);
-      assert.ok(result.includes("Relevant Memories"));
-      assert.ok(!result.includes("Relevant Procedures"));
+      assert.ok(result.includes("Memories"));
+      assert.ok(!result.includes("Procedures"));
     });
   });
 });
