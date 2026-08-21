@@ -3,6 +3,7 @@ import { BrainDBReader } from "./db-reader";
 import { DBWatcher } from "./watcher";
 import { BrainSettingTab } from "./settings";
 import { DEFAULT_SETTINGS, type WaywiserBrainSettings } from "./types";
+import { BrainDashboardView, BRAIN_VIEW_TYPE } from "./dashboard-view";
 
 export default class WaywiserBrainPlugin extends Plugin {
   settings: WaywiserBrainSettings = DEFAULT_SETTINGS;
@@ -39,8 +40,41 @@ export default class WaywiserBrainPlugin extends Plugin {
       this.startWatcher(dbPath);
     }
 
-    // Register views, commands, and graph hooks in Tasks 24-25
+    // Register dashboard view
+    this.registerView(BRAIN_VIEW_TYPE, (leaf) => new BrainDashboardView(leaf, this.dbReader));
+
+    // Ribbon icon
+    this.addRibbonIcon("brain", "Open Brain Dashboard", () => {
+      this.activateDashboard();
+    });
+
+    // Status bar click handler
+    if (this.statusBarEl) {
+      this.statusBarEl.addEventListener("click", () => {
+        this.activateDashboard();
+      });
+      this.statusBarEl.style.cursor = "pointer";
+    }
+
+    // Register graph hooks in Task 25
     console.log("Waywiser Brain plugin loaded");
+  }
+
+  async activateDashboard(): Promise<void> {
+    const { workspace } = this.app;
+
+    // Check if already open
+    let leaf = workspace.getLeavesOfType(BRAIN_VIEW_TYPE)[0];
+    if (!leaf) {
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (rightLeaf) {
+        leaf = rightLeaf;
+        await leaf.setViewState({ type: BRAIN_VIEW_TYPE, active: true });
+      }
+    }
+    if (leaf) {
+      workspace.revealLeaf(leaf);
+    }
   }
 
   onunload(): void {
@@ -87,7 +121,13 @@ export default class WaywiserBrainPlugin extends Plugin {
     this.watcher = new DBWatcher(dbPath, this.settings.refreshIntervalMs, () => {
       this.dbReader?.reload();
       this.updateStatusBar();
-      // Will also refresh views in Task 24
+
+      // Refresh dashboard view
+      const leaves = this.app.workspace.getLeavesOfType(BRAIN_VIEW_TYPE);
+      for (const leaf of leaves) {
+        const view = leaf.view as BrainDashboardView;
+        view.setDbReader(this.dbReader);
+      }
     });
     this.watcher.start();
   }
