@@ -48,7 +48,6 @@ function makeStubApi() {
 const MODULES = [
 	"soul",
 	"memory",
-	"todo",
 	"skills-manage",
 	"web",
 	"execute-code",
@@ -56,13 +55,13 @@ const MODULES = [
 	"cronjob",
 	"clarify",
 	"kanban",
+	"todo-compat",
 	"commands",
 ];
 
 const EXPECTED_TOOLS = new Set([
 	"soul",
 	"memory",
-	"todo",
 	"skills_list",
 	"skill_view",
 	"skill_manage",

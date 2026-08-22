@@ -17,7 +17,7 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url);
 
 // Import AFTER env is set (state module reads env lazily via waywiserHome()).
-const { db_, closeDb, readJSON, writeJSON, buildSubagentPrompt, shortId, waywiserHome, homeFile, logMem, memlogRecent, appendEpisode, memSettings, setMemSettings, rememberRow, recentMemories, READ_POOL_PREDICATE } = jiti(
+const { db_, closeDb, readJSON, writeJSON, buildSubagentPrompt, shortId, waywiserHome, homeFile, logMem, memlogRecent, appendEpisode, memSettings, setMemSettings, rememberRow, recentMemories, READ_POOL_PREDICATE, registry_ } = jiti(
 	"../extensions/utils/state.js"
 );
 const { htmlToText } = jiti("../extensions/web.js");
@@ -28,6 +28,17 @@ const { getQuiet, setQuiet, parseQuietSetting, inDnd, msUntilDndEnd, parseHM } =
 // @ts-expect-error -- extra named export added for regression testing
 const parseCron = jiti("../extensions/cronjob.js").parseCron;
 const { LEAF_ARGS, runChild } = jiti("../extensions/utils/llmcall.js");
+
+// soul.ts has a default export (extension entry point, not a named-export module);
+// load it the same way test/smoke.test.ts's loadExt() does — handle both raw-function
+// and ESM-namespace interop shapes returned by jiti.
+function loadDefaultExport(mod: unknown): (api: unknown) => unknown {
+	if (typeof mod === "function") return mod as (api: unknown) => unknown;
+	const d = (mod as { default?: unknown }).default;
+	if (typeof d === "function") return d as (api: unknown) => unknown;
+	throw new Error("no function export found");
+}
+const soulDefault = loadDefaultExport(jiti("../extensions/soul.js"));
 
 after(() => {
 	closeDb();
@@ -403,14 +414,18 @@ test("GATE_PROMPT + buildGateInput shape", () => {
 	assert.ok(/JSON/i.test(GATE_PROMPT) && /verbatim/i.test(GATE_PROMPT));
 });
 
-test("parseGateReply: valid / junk / >2 / no-json", () => {
+test("parseGateReply: valid / junk / >3 / no-json", () => {
 	const good = parseGateReply('blah\n{"candidates":[{"content":"indent 4 spaces","verbatim":"use 4-space indent","type":"preference"}]}\nbye');
 	assert.equal(good.length, 1);
 	assert.equal(good[0].type, "preference");
 	assert.deepEqual(parseGateReply("no json here"), []);
 	assert.deepEqual(parseGateReply("{{{{"), []);
-	const two = parseGateReply('{"candidates":[' + '{"content":"a","verbatim":"use 4-space indent","type":"fact"},{"content":"b","verbatim":"use 4-space indent","type":"fact"},' + '{"content":"c","verbatim":"use 4-space indent","type":"fact"}]}');
-	assert.equal(two.length, 2); // capped at 2
+	const four = parseGateReply(
+		'{"candidates":[' +
+			'{"content":"a","verbatim":"use 4-space indent","type":"fact"},{"content":"b","verbatim":"use 4-space indent","type":"fact"},' +
+			'{"content":"c","verbatim":"use 4-space indent","type":"fact"},{"content":"d","verbatim":"use 4-space indent","type":"fact"}]}',
+	);
+	assert.equal(four.length, 3); // capped at 3
 });
 
 test("validateCandidate: accept the good one", () => {
@@ -447,12 +462,59 @@ test("validateCandidate: reject each rule (spec §4 matrix)", () => {
 		if ((c as { supersedes?: number }).supersedes === 999) { assert.ok(!v.ok && v.reason === "supersedes-missing", JSON.stringify(v)); continue; }
 		assert.ok(!v.ok, JSON.stringify(v) + " (case: " + JSON.stringify(c) + ")");
 	}
-	// explicit: supersedes pointing at an existing, non-cyclic id is VALID
-	const okSup = validateCandidate({ ...base, supersedes: 7 }, WIN.joined, existing);
+	// explicit: supersedes pointing at an existing, non-cyclic id with sufficient content
+	// overlap is VALID. (base.content shares no tokens with "older fact about the weather",
+	// so a dedicated overlapping candidate is used here — see the low-overlap-rejection
+	// tests below for the case this guards against.)
+	const okSup = validateCandidate(
+		{ ...base, content: "Weather forecast changed for the repo, replacing the older note", supersedes: 7 },
+		WIN.joined,
+		existing,
+	);
 	assert.equal(okSup.ok, true, okSup.reason);
 	// cycle: existing row supersedes this candidate's (hypothetical) id
 	const cyclic = validateCandidate({ id: 5, ...base, supersedes: 7 }, WIN.joined, [...existing.filter((e) => e.id !== 7), { id: 7, content: "older fact about the weather", supersedes: 5 }]);
 	assert.ok(!cyclic.ok && cyclic.reason === "supersede-cycle", JSON.stringify(cyclic));
+});
+
+// ── memrules gate: supersedes overlap hardening (spec §3.2) ────────────────
+test("gate: rejects supersedes with low Jaccard overlap", () => {
+	const existing = [{ id: 1, content: "The user prefers dark mode", supersedes: null }];
+	const c = {
+		content: "The API endpoint is at port 8080",
+		verbatim: "port 8080",
+		type: "fact" as const,
+		supersedes: 1,
+	};
+	const result = validateCandidate(c, "The API endpoint is at port 8080", existing);
+	assert.strictEqual(result.ok, false);
+	assert.ok(result.reason.startsWith("supersedes-low-overlap"));
+});
+
+test("gate: accepts supersedes with sufficient Jaccard overlap", () => {
+	const existing = [{ id: 1, content: "The user prefers light mode", supersedes: null }];
+	const c = {
+		content: "The user prefers dark mode",
+		verbatim: "prefers dark mode",
+		type: "preference" as const,
+		supersedes: 1,
+	};
+	const result = validateCandidate(c, "I now prefers dark mode please", existing);
+	assert.strictEqual(result.ok, true);
+});
+
+test("gate: parseGateReply caps at 3 candidates", () => {
+	const raw = JSON.stringify({
+		candidates: [
+			{ content: "a", verbatim: "a", type: "fact" },
+			{ content: "b", verbatim: "b", type: "fact" },
+			{ content: "c", verbatim: "c", type: "fact" },
+			{ content: "d", verbatim: "d", type: "fact" },
+			{ content: "e", verbatim: "e", type: "fact" },
+		],
+	});
+	const parsed = parseGateReply(raw);
+	assert.ok(parsed.length <= 3, `expected ≤3, got ${parsed.length}`);
 });
 
 // ── memrules recall (C) ──────────────────────────────────────────────────
@@ -812,4 +874,138 @@ test("memAction: stats shape (stable keys) + list markers", async () => {
 	const l = await memAction(d, "list", {});
 	assert.equal(l.isErr, undefined);
 	assert.ok(/\bsrc=/.test(l.text) || l.text === "Memory is empty.", l.text);
+});
+
+// ── RecallProvider contract (spec 03 §3.1) ──────────────────────────────
+test("RecallProvider: core falls back to FTS when no provider registered", async () => {
+	registry_().recallProvider = undefined;
+	const result = await memAction(db_(), "recall", { query: "test query" });
+	assert.ok(!result.isErr);
+});
+
+test("RecallProvider: core uses provider when registered", async () => {
+	let called = false;
+	registry_().recallProvider = {
+		async recall(query: string, limit: number) {
+			called = true;
+			return { text: `provider-result for "${query}" limit=${limit}` };
+		},
+	};
+	const result = await memAction(db_(), "recall", { query: "provider test" });
+	assert.ok(called, "provider should be called");
+	assert.ok(result.text.includes("provider-result"));
+	registry_().recallProvider = undefined;
+});
+
+test("RecallProvider: core falls back on provider error", async () => {
+	registry_().recallProvider = {
+		async recall() { throw new Error("boom"); },
+	};
+	const result = await memAction(db_(), "recall", { query: "test" });
+	assert.ok(!result.isErr, "should not error — fallback should work");
+	registry_().recallProvider = undefined;
+});
+
+// ── memory export/import (spec 03 §3.5) ─────────────────────────────────
+test("memory: export then import round-trips", async () => {
+	const d = db_();
+	const content = "round-trip-test-" + Date.now();
+	rememberRow(d, { type: "fact", content, confidence: 0.9 });
+
+	const exportResult = await memAction(d, "export", {});
+	assert.ok(!exportResult.isErr);
+	assert.ok(exportResult.text.includes("Exported"));
+
+	// Delete the memory
+	d.prepare("DELETE FROM memories WHERE content = ?").run(content);
+
+	// Import should restore it
+	const importResult = await memAction(d, "import", {});
+	assert.ok(!importResult.isErr);
+	assert.ok(importResult.text.includes("Imported"));
+
+	// Verify it exists
+	const row = d.prepare("SELECT * FROM memories WHERE content = ?").get(content);
+	assert.ok(row, "imported item should exist");
+
+	// Cleanup
+	d.prepare("DELETE FROM memories WHERE content = ?").run(content);
+});
+
+test("memory: import deduplicates existing content", async () => {
+	const d = db_();
+	const content = "dedup-test-" + Date.now();
+	rememberRow(d, { type: "fact", content, confidence: 0.9 });
+
+	// Export (includes the memory)
+	await memAction(d, "export", {});
+
+	// Import again — should skip the duplicate
+	const result = await memAction(d, "import", {});
+	assert.ok(result.text.includes("skipped"));
+
+	// Cleanup
+	d.prepare("DELETE FROM memories WHERE content = ?").run(content);
+});
+
+test("memory: import reports file-not-found for a missing path", async () => {
+	const d = db_();
+	const result = await memAction(d, "import", { file: path.join(tmp, "does-not-exist.json") });
+	assert.equal(result.isErr, true);
+	assert.ok(result.text.includes("File not found"), result.text);
+});
+
+// ── soul consolidate (spec 03 §3.4) ─────────────────────────────────────
+test("soul: consolidate reports counts and flags contradictions above threshold", async () => {
+	let execute: ((...args: unknown[]) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+	const stubPi = {
+		on: () => undefined,
+		registerTool: (t: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> }) => {
+			execute = t.execute;
+		},
+	};
+	soulDefault(stubPi as never);
+	assert.ok(execute, "soul tool should register an execute function");
+
+	const lines = [
+		"# SOUL",
+		"",
+		"## Preferences",
+		"- always use tabs for indentation",
+		"- never use tabs for indentation",
+		...Array.from({ length: 10 }, (_, i) => `- filler preference number ${i}`),
+		"",
+		"## Lessons learned",
+		...Array.from({ length: 4 }, (_, i) => `- filler lesson number ${i}  (2026-01-0${i + 1})`),
+		"",
+	];
+	fs.writeFileSync(homeFile("SOUL.md"), lines.join("\n"));
+
+	const result = await execute!("id", { action: "consolidate" }, undefined, undefined, {} as never);
+	const text = result.content[0].text;
+	assert.ok(text.includes("Preferences: 12"), text);
+	assert.ok(text.includes("Lessons: 4"), text);
+	assert.ok(text.includes("Total: 16"), text);
+	assert.ok(text.includes("Potential contradictions"), text);
+	assert.ok(text.includes("always use tabs"), text);
+});
+
+test("soul: consolidate reports no consolidation needed under threshold", async () => {
+	let execute: ((...args: unknown[]) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+	const stubPi = {
+		on: () => undefined,
+		registerTool: (t: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> }) => {
+			execute = t.execute;
+		},
+	};
+	soulDefault(stubPi as never);
+
+	fs.writeFileSync(
+		homeFile("SOUL.md"),
+		["# SOUL", "", "## Preferences", "- a single preference", "", "## Lessons learned", ""].join("\n"),
+	);
+
+	const result = await execute!("id", { action: "consolidate" }, undefined, undefined, {} as never);
+	const text = result.content[0].text;
+	assert.ok(text.includes("no consolidation needed yet"), text);
 });

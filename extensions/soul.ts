@@ -42,8 +42,13 @@ export default function soul(pi: ExtensionAPI): void {
 			"Manage your persistent identity (SOUL.md). Read it, or append durable user preferences and dated lessons learned. Appends only — never rewrite.",
 		parameters: Type.Object({
 			action: Type.Union(
-				[Type.Literal("read"), Type.Literal("append_preference"), Type.Literal("append_lesson")],
-				{ description: "read | append_preference | append_lesson" },
+				[
+					Type.Literal("read"),
+					Type.Literal("append_preference"),
+					Type.Literal("append_lesson"),
+					Type.Literal("consolidate"),
+				],
+				{ description: "read | append_preference | append_lesson | consolidate" },
 			),
 			text: Type.Optional(Type.String({ description: "The preference or lesson to append" })),
 		}),
@@ -56,6 +61,66 @@ export default function soul(pi: ExtensionAPI): void {
 				} catch {
 					return err("SOUL.md not found. Run bin/waywiser-* once to bootstrap, or create ~/.waywiser/SOUL.md.");
 				}
+			}
+			if (params.action === "consolidate") {
+				let content: string;
+				try {
+					content = fs.readFileSync(file, "utf-8");
+				} catch {
+					return err("SOUL.md not found.");
+				}
+
+				// Count items in each section
+				const prefLines = extractBullets(content, "## Preferences");
+				const lessLines = extractBullets(content, "## Lessons learned");
+				const total = prefLines.length + lessLines.length;
+
+				if (total < 15) {
+					return ok(
+						`SOUL.md has ${prefLines.length} preferences and ${lessLines.length} lessons — ` +
+						`no consolidation needed yet (threshold: 15).`,
+					);
+				}
+
+				// Detect potential contradictions within preferences
+				const contradictions: string[] = [];
+				for (let i = 0; i < prefLines.length; i++) {
+					for (let j = i + 1; j < prefLines.length; j++) {
+						// Check if two preferences reference the same subject but
+						// contain opposing verbs (prefer/avoid, use/never, always/never)
+						const a = prefLines[i].toLowerCase();
+						const b = prefLines[j].toLowerCase();
+						if (
+							((a.includes("never") && b.includes("always")) || (a.includes("always") && b.includes("never"))) ||
+							((a.includes("prefer") && b.includes("avoid")) || (a.includes("avoid") && b.includes("prefer"))) ||
+							((a.includes("use ") && b.includes("don't use")) || (a.includes("don't use") && b.includes("use ")))
+						) {
+							// Crude heuristic — surface for human review, not auto-resolve
+							contradictions.push(`  ? "${prefLines[i].slice(2, 80)}" vs "${prefLines[j].slice(2, 80)}"`);
+						}
+					}
+				}
+
+				const parts = [
+					`SOUL.md consolidation report:`,
+					`  Preferences: ${prefLines.length}`,
+					`  Lessons: ${lessLines.length}`,
+					`  Total: ${total}`,
+				];
+				if (contradictions.length) {
+					parts.push(`\nPotential contradictions (review manually):`);
+					parts.push(...contradictions.slice(0, 10));
+					if (contradictions.length > 10) {
+						parts.push(`  ... and ${contradictions.length - 10} more`);
+					}
+				}
+				parts.push(
+					`\nTo consolidate: edit ~/.waywiser/SOUL.md directly.`,
+					`Keep the latest version of contradictory preferences.`,
+					`Remove outdated lessons. The agent will not edit SOUL.md itself.`,
+				);
+
+				return ok(parts.join("\n"));
 			}
 			const text = (params.text ?? "").trim();
 			if (!text) return err("action " + params.action + " requires non-empty text");
@@ -100,4 +165,17 @@ function ok(text: string) {
 }
 function err(text: string) {
 	return { content: [{ type: "text" as const, text }], details: {}, isError: true };
+}
+
+/** Extract bullet lines ("- ...") from a section of SOUL.md, up to the next "## " header. */
+export function extractBullets(content: string, sectionHeader: string): string[] {
+	const lines = content.split("\n");
+	const idx = lines.findIndex((l) => l.trimStart() === sectionHeader);
+	if (idx < 0) return [];
+	const bullets: string[] = [];
+	for (let i = idx + 1; i < lines.length; i++) {
+		if (lines[i].startsWith("## ")) break; // next section
+		if (lines[i].startsWith("- ")) bullets.push(lines[i]);
+	}
+	return bullets;
 }

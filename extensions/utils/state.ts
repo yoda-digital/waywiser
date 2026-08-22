@@ -265,6 +265,20 @@ export interface SessionBudget {
 	subagentSpawnCount: number;
 }
 
+/**
+ * Contract for a recall-enhancing plugin (e.g. Brain).
+ * Registered on `WaywiserRegistry.recallProvider` at `session_start`.
+ * Core memory falls back to FTS5 when no provider is registered.
+ */
+export interface RecallProvider {
+	/**
+	 * Return formatted text for the given query.
+	 * The implementation owns ranking, truncation, and access-count bumps.
+	 * Must never throw — return "No memories matched." on empty results.
+	 */
+	recall(query: string, limit: number): Promise<{ text: string }>;
+}
+
 /** Cross-extension registry (in-process only). */
 export interface WaywiserRegistry {
 	subagents: Map<string, unknown>;
@@ -273,6 +287,8 @@ export interface WaywiserRegistry {
 	log: (kind: string, text: string) => void;
 	bumpKanban?: () => void;
 	budget: SessionBudget;
+	/** Recall-enhancing plugin. Brain registers this at session_start. */
+	recallProvider?: RecallProvider;
 }
 
 const registry: WaywiserRegistry = {
