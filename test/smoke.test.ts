@@ -85,6 +85,7 @@ const EXPECTED_COMMANDS = new Set([
 	"memory",
 	"soul",
 	"journey",
+	"trace",
 	"waywiser",
 	"refine",
 	"handoff",

@@ -6,6 +6,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { logLegacy } from "./trace.js";
 
 // Kept in sync with package.json "version" by hand (bug fix: was stuck at "0.1.0").
 export const WAYWISER_VERSION = "1.0.0";
@@ -97,6 +98,18 @@ export function db_(): DatabaseSync {
 	] as const) {
 		if (!memCols.some((r) => r.name === col)) d.exec(`ALTER TABLE memories ADD COLUMN ${col} ${def}`);
 	}
+
+	// Goal budgets migration (spec 05 §3.2.1): idempotent ALTERs, same pattern as above.
+	const goalCols = d.prepare("PRAGMA table_info(goals)").all() as Array<{ name: string }>;
+	for (const [col, def] of [
+		["max_steps", "INTEGER"],
+		["deadline", "TEXT"],
+		["done_condition", "TEXT"],
+		["steps_taken", "INTEGER NOT NULL DEFAULT 0"],
+	] as const) {
+		if (!goalCols.some((r) => r.name === col)) d.exec(`ALTER TABLE goals ADD COLUMN ${col} ${def}`);
+	}
+
 	d.exec(
 		`CREATE TABLE IF NOT EXISTS memlog (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -295,13 +308,7 @@ const registry: WaywiserRegistry = {
 	subagents: new Map(),
 	todos: undefined,
 	cron: {},
-	log: (kind, text) => {
-		try {
-			db_().prepare("INSERT INTO journey (kind, text) VALUES (?, ?)").run(kind, text);
-		} catch {
-			/* DB unavailable; journey logging is best-effort */
-		}
-	},
+	log: logLegacy,
 	budget: {
 		maxToolCalls: Number(process.env.WAYWISER_MAX_TOOL_CALLS) || 200,
 		maxSubagentSpawns: Number(process.env.WAYWISER_MAX_SPAWNS) || 10,

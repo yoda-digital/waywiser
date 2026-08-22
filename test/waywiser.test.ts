@@ -1009,3 +1009,55 @@ test("soul: consolidate reports no consolidation needed under threshold", async 
 	const text = result.content[0].text;
 	assert.ok(text.includes("no consolidation needed yet"), text);
 });
+
+// ---------------------------------------------------------------- trace events + goal budgets (spec 05 §6)
+test("TraceEvent: logTrace writes structured JSON to journey", () => {
+	const { logTrace } = jiti("../extensions/utils/trace.js");
+	logTrace({ kind: "test", tool: "memory", action: "recall", status: "ok", latencyMs: 42 });
+	const row = db_()
+		.prepare("SELECT text FROM journey WHERE kind = 'test' ORDER BY id DESC LIMIT 1")
+		.get() as { text: string };
+	const ev = JSON.parse(row.text);
+	assert.equal(ev.tool, "memory");
+	assert.equal(ev.action, "recall");
+	assert.equal(ev.status, "ok");
+	assert.equal(ev.latencyMs, 42);
+});
+
+test("TraceEvent: logLegacy wraps text in a TraceEvent", () => {
+	const { logLegacy } = jiti("../extensions/utils/trace.js");
+	logLegacy("compat", "old-style text message");
+	const row = db_()
+		.prepare("SELECT text FROM journey WHERE kind = 'compat' ORDER BY id DESC LIMIT 1")
+		.get() as { text: string };
+	const ev = JSON.parse(row.text);
+	assert.equal(ev.detail, "old-style text message");
+	assert.equal(ev.kind, "compat");
+});
+
+test("goal budget: columns exist after migration", () => {
+	const cols = (db_().prepare("PRAGMA table_info(goals)").all() as Array<{ name: string }>)
+		.map((r) => r.name);
+	for (const c of ["max_steps", "deadline", "done_condition", "steps_taken"]) {
+		assert.ok(cols.includes(c), `missing goal column: ${c}`);
+	}
+});
+
+test("goal budget: insert with budget fields", () => {
+	db_().prepare(
+		"INSERT INTO goals (id, text, status, max_steps, deadline, done_condition) VALUES (?,?,?,?,?,?)",
+	).run("g_test", "test goal", "active", 30, "2026-09-01", "All checks pass");
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const row = db_().prepare("SELECT * FROM goals WHERE id = 'g_test'").get() as any;
+	assert.equal(row.max_steps, 30);
+	assert.equal(row.deadline, "2026-09-01");
+	assert.equal(row.done_condition, "All checks pass");
+	assert.equal(row.steps_taken, 0);
+});
+
+test("goal budget: steps_taken increments", () => {
+	db_().prepare("UPDATE goals SET steps_taken = steps_taken + 1 WHERE id = 'g_test'").run();
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const row = db_().prepare("SELECT steps_taken FROM goals WHERE id = 'g_test'").get() as any;
+	assert.equal(row.steps_taken, 1);
+});

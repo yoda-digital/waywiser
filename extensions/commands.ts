@@ -18,7 +18,9 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
-import { db_, WAYWISER_VERSION, homeFile, registry_, shortId, memSettings } from "./utils/state.js";
+import * as path from "node:path";
+import { db_, WAYWISER_VERSION, homeFile, registry_, shortId, memSettings, waywiserHome } from "./utils/state.js";
+import { logTrace, type TraceEvent } from "./utils/trace.js";
 import { memAction, parseMemCommandLine, runRecallText } from "./memory.js";
 import { runConsolidate, formatConsolidateReport } from "./mem-dream.js";
 import { registerInjection, removeInjection, PRIORITIES, cacheStatsLine, injectionStats } from "./utils/prompt-budget.js";
@@ -28,11 +30,17 @@ interface Goal {
 	parent_id: string | null;
 	text: string;
 	status: string;
+	max_steps: number | null;
+	deadline: string | null;
+	done_condition: string | null;
+	steps_taken: number;
 }
 
 function goals(): Goal[] {
 	try {
-		return db_().prepare("SELECT id, parent_id, text, status FROM goals ORDER BY created_at, id").all() as Goal[];
+		return db_()
+			.prepare("SELECT id, parent_id, text, status, max_steps, deadline, done_condition, steps_taken FROM goals ORDER BY created_at, id")
+			.all() as Goal[];
 	} catch {
 		return [];
 	}
@@ -47,7 +55,16 @@ function goalTree(g: Goal[]): string {
 	const lines: string[] = [];
 	const walk = (parent: string | null, indent: string): void => {
 		for (const n of byParent.get(parent) ?? []) {
-			lines.push(`${indent}${n.id} [${n.status}] ${n.text}`);
+			const budget: string[] = [];
+			if (n.max_steps) budget.push(`${n.steps_taken}/${n.max_steps} steps`);
+			if (n.deadline) {
+				const remaining = Math.ceil((new Date(n.deadline).getTime() - Date.now()) / 86_400_000);
+				budget.push(remaining > 0 ? `${remaining}d left` : "OVERDUE");
+			}
+			if (n.done_condition) budget.push(`done: ${n.done_condition.slice(0, 40)}`);
+			const budgetStr = budget.length ? ` (${budget.join(", ")})` : "";
+
+			lines.push(`${indent}${n.id} [${n.status}] ${n.text}${budgetStr}`);
 			walk(n.id, indent + "  ");
 		}
 	};
@@ -78,16 +95,97 @@ export default function commands(pi: ExtensionAPI): void {
 		lastCtx = ctx;
 	});
 
+	// Advisory goal-budget tracking (spec 05 §3.2.6): every tool call bumps
+	// steps_taken on every active goal. Enforcement is left to the permission
+	// engine (spec 02) — this counter only feeds the system-prompt budget text.
+	pi.on("tool_call", () => {
+		try {
+			db_().prepare("UPDATE goals SET steps_taken = steps_taken + 1 WHERE status = 'active'").run();
+		} catch {
+			// Best-effort.
+		}
+	});
+
+	// Session summary (spec 05 §3.1.5): tally tool calls / unique tools / errors
+	// from the last 24h of journey rows and emit one final trace event.
+	pi.on("session_shutdown", () => {
+		try {
+			const rows = db_()
+				.prepare("SELECT text FROM journey WHERE created_at >= datetime('now', '-24 hours')")
+				.all() as Array<{ text: string }>;
+
+			let toolCalls = 0;
+			let errors = 0;
+			const toolSet = new Set<string>();
+
+			for (const row of rows) {
+				try {
+					const ev = JSON.parse(row.text) as Partial<TraceEvent>;
+					if (ev.tool) {
+						toolCalls++;
+						toolSet.add(ev.tool);
+					}
+					if (ev.status === "error") errors++;
+				} catch {
+					// Legacy text row — skip in structured count.
+				}
+			}
+
+			logTrace({
+				kind: "session-summary",
+				detail: `tools=${toolCalls} unique=${toolSet.size} errors=${errors}`,
+			});
+		} catch {
+			// Best-effort.
+		}
+	});
+
 	// ---------------------------------------------------------------- goals
 	pi.registerCommand("goal", {
-		description: "Set the session goal (replaces the current active root goal)",
+		description: "Set the session goal: /goal <text> [--max-steps N] [--deadline ISO] [--done \"condition\"]",
 		handler: async (args, ctx) => {
-			const text = args.trim();
-			if (!text) return ctx.ui.notify("usage: /goal <text>", "error");
+			const raw = args.trim();
+			if (!raw) return ctx.ui.notify("usage: /goal <text> [--max-steps N] [--deadline ISO] [--done \"...\"]", "error");
+
+			// Extract flags.
+			let text = raw;
+			let maxSteps: number | null = null;
+			let deadline: string | null = null;
+			let doneCondition: string | null = null;
+
+			const msMatch = text.match(/--max-steps\s+(\d+)/);
+			if (msMatch) {
+				maxSteps = Number(msMatch[1]);
+				text = text.replace(msMatch[0], "");
+			}
+
+			const dlMatch = text.match(/--deadline\s+(\S+)/);
+			if (dlMatch) {
+				deadline = dlMatch[1];
+				text = text.replace(dlMatch[0], "");
+			}
+
+			const doneMatch = text.match(/--done\s+"([^"]+)"/);
+			if (doneMatch) {
+				doneCondition = doneMatch[1];
+				text = text.replace(doneMatch[0], "");
+			}
+
+			text = text.trim();
+			if (!text) return ctx.ui.notify("goal text is empty after parsing flags", "error");
+
 			const id = shortId("g");
-			db_().prepare("INSERT INTO goals (id, parent_id, text, status) VALUES (?,?,?,?)").run(id, null, text, "active");
+			db_()
+				.prepare("INSERT INTO goals (id, parent_id, text, status, max_steps, deadline, done_condition) VALUES (?,?,?,?,?,?,?)")
+				.run(id, null, text, "active", maxSteps, deadline, doneCondition);
 			registry_().log("goal", `set: ${text.slice(0, 100)}`);
-			ctx.ui.notify(`Goal set: ${id} ${text}`, "info");
+
+			const budget: string[] = [];
+			if (maxSteps) budget.push(`max ${maxSteps} steps`);
+			if (deadline) budget.push(`deadline ${deadline}`);
+			if (doneCondition) budget.push(`done when: ${doneCondition}`);
+
+			ctx.ui.notify(`Goal set: ${id} ${text}${budget.length ? ` (${budget.join(", ")})` : ""}`, "info");
 		},
 	});
 
@@ -163,12 +261,62 @@ export default function commands(pi: ExtensionAPI): void {
 			const n = Math.min(Number(args.trim()) || 15, 50);
 			try {
 				const rows = db_().prepare("SELECT kind, text, created_at FROM journey ORDER BY id DESC LIMIT ?").all(n) as Array<
-					Record<string, unknown>
+					{ kind: string; text: string; created_at: string }
 				>;
-				ctx.ui.notify(
-					rows.length ? rows.map((r) => `[${r.created_at}] ${r.kind}: ${String(r.text).slice(0, 120)}`).join("\n") : "Journey empty.",
-					"info",
-				);
+				const display = rows
+					.map((r) => {
+						let detail = String(r.text).slice(0, 120);
+						try {
+							const ev = JSON.parse(String(r.text)) as Partial<TraceEvent>;
+							const parts: string[] = [];
+							if (ev.tool) parts.push(ev.tool);
+							if (ev.action) parts.push(ev.action);
+							if (ev.status) parts.push(`[${ev.status}]`);
+							if (ev.latencyMs) parts.push(`${ev.latencyMs}ms`);
+							if (ev.detail) parts.push(ev.detail.slice(0, 80));
+							detail = parts.join(" ") || detail;
+						} catch {
+							// Legacy text row — use raw text.
+						}
+						return `[${r.created_at}] ${r.kind}: ${detail}`;
+					})
+					.join("\n");
+				ctx.ui.notify(rows.length ? display : "Journey empty.", "info");
+			} catch (e) {
+				ctx.ui.notify(String(e), "error");
+			}
+		},
+	});
+
+	pi.registerCommand("trace", {
+		description: "Trace export: /trace export [n] — write last n journey entries as JSONL to ~/.waywiser/trace-export.jsonl",
+		handler: async (args, ctx) => {
+			const parts = args.trim().split(/\s+/);
+			const sub = parts[0] ?? "export";
+			if (sub !== "export") {
+				ctx.ui.notify("usage: /trace export [n]", "error");
+				return;
+			}
+			const n = Math.min(Number(parts[1]) || 500, 5000);
+			try {
+				const rows = db_()
+					.prepare("SELECT kind, text, created_at FROM journey ORDER BY id DESC LIMIT ?")
+					.all(n) as Array<{ kind: string; text: string; created_at: string }>;
+
+				const lines = rows.reverse().map((r) => {
+					// Wrap legacy text-only rows into a minimal TraceEvent shape.
+					let ev: Record<string, unknown>;
+					try {
+						ev = JSON.parse(r.text);
+					} catch {
+						ev = { kind: r.kind, detail: r.text };
+					}
+					return JSON.stringify({ ...ev, kind: r.kind, timestamp: r.created_at });
+				});
+
+				const file = path.join(waywiserHome(), "trace-export.jsonl");
+				fs.writeFileSync(file, lines.join("\n") + "\n");
+				ctx.ui.notify(`Exported ${lines.length} trace events to ${file}`, "info");
 			} catch (e) {
 				ctx.ui.notify(String(e), "error");
 			}
