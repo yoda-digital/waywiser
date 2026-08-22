@@ -8,7 +8,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { waywiserHome } from "./utils/state.js";
+import { waywiserHome, db_ } from "./utils/state.js";
 
 interface SkillInfo {
 	name: string;
@@ -67,6 +67,44 @@ function discoverSkills(cwd: string): SkillInfo[] {
 const sanitize = (name: string): string => name.replace(/[^a-zA-Z0-9-_]/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "skill";
 
 export default function skillsManage(pi: ExtensionAPI): void {
+	// ── Inject lightweight PA skill catalog into system prompt ──────────
+	// Progressive disclosure: only names + descriptions here (cache-stable).
+	// Full skill content loads on-demand via skill_view.
+	pi.on("before_agent_start", async (_event, ctx: ExtensionContext) => {
+		const skills = discoverSkills(ctx.cwd);
+		const paSkills = skills.filter((s) => s.name.startsWith("pa-"));
+		if (!paSkills.length) return {};
+
+		// Check if PA onboarding has been completed
+		let onboarded = false;
+		try {
+			const row = db_().prepare("SELECT id FROM memories WHERE content LIKE '%PA system onboarded%' AND content LIKE '%pa-onboarded%' LIMIT 1").get();
+			if (row) onboarded = true;
+		} catch { /* db not ready yet — treat as not onboarded */ }
+
+		const catalog = paSkills
+			.filter((s) => s.name !== "pa-onboard")
+			.map((s) => `  • ${s.name}: ${s.description}`)
+			.join("\n");
+
+		const onboardNote = onboarded
+			? ""
+			: `\n⚠ PA system not yet onboarded. On the FIRST personal assistant request,\n`
+				+ `load \`skill_view\` name="pa-onboard" and run the setup wizard before\n`
+				+ `proceeding with the domain skill. This sets up daily/weekly review crons,\n`
+				+ `captures preferences, and creates the PA kanban board.\n`;
+
+		return {
+			systemPrompt: `\n<!-- WAYWISER PA SKILLS (${paSkills.length} domains) -->\n`
+				+ `When the user asks for help with personal assistant tasks (time management,\n`
+				+ `writing, communication, research, events, finance, travel, decisions, etc.),\n`
+				+ `use \`skill_view\` name="<skill>" to load the relevant domain skill, then follow it.\n`
+				+ onboardNote
+				+ `\nAvailable PA skills:\n${catalog}\n`
+				+ `<!-- END PA SKILLS -->\n`,
+		};
+	});
+
 	pi.registerTool({
 		name: "skills_list",
 		label: "Skills List",
