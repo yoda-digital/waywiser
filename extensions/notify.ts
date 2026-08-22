@@ -10,7 +10,7 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { exec } from "node:child_process";
+import { spawn } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import { waywiserHome, readJSON, writeJSON, registry_ } from "./utils/state.js";
@@ -101,25 +101,31 @@ function sendsThisHour(): number {
 	return sendLog.length;
 }
 
-function execAsync(cmd: string): Promise<{ ok: boolean; error?: string }> {
+async function sendDesktop(
+	title: string,
+	body: string,
+): Promise<{ ok: boolean; error?: string }> {
 	return new Promise((resolve) => {
-		exec(cmd, (err, _stdout, stderr) => {
-			resolve(err ? { ok: false, error: err.message + (stderr ? `: ${stderr.slice(0, 200)}` : "") } : { ok: true });
+		let child;
+		if (os.platform() === "darwin") {
+			const script =
+				`display notification ${JSON.stringify(body)} ` +
+				`with title ${JSON.stringify(title)}`;
+			child = spawn("osascript", ["-e", script], { stdio: "ignore" });
+		} else {
+			child = spawn("notify-send", [title, body], { stdio: "ignore" });
+		}
+		child.on("error", (err) => {
+			resolve({ ok: false, error: err.message });
+		});
+		child.on("close", (code) => {
+			resolve(
+				code === 0
+					? { ok: true }
+					: { ok: false, error: `exit code ${code}` },
+			);
 		});
 	});
-}
-
-function shellQuote(s: string): string {
-	return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-async function sendDesktop(title: string, body: string): Promise<{ ok: boolean; error?: string }> {
-	if (os.platform() === "darwin") {
-		const script = `display notification ${JSON.stringify(body)} with title ${JSON.stringify(title)}`;
-		return execAsync(`osascript -e ${shellQuote(script)}`);
-	}
-	// Linux (and best-effort default elsewhere): notify-send.
-	return execAsync(`notify-send ${shellQuote(title)} ${shellQuote(body)}`);
 }
 
 /** Escape for Telegram's legacy Markdown parse_mode (not MarkdownV2). */
