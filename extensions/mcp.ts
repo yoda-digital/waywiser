@@ -181,6 +181,9 @@ class McpClient {
 
 	private pump(chunk: string): void {
 		this.buf += chunk;
+		if (this.buf.length > 1_000_000) {
+			this.buf = this.buf.slice(-100_000);
+		}
 		for (;;) {
 			const idx = this.buf.indexOf("\n");
 			if (idx < 0) break;

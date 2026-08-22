@@ -57,6 +57,34 @@ export default function brain(pi: ExtensionAPI): void {
   let sessionReflectionCount = 0;
   let gateAccum: string[] = [];
 
+  // ── Embedding bookkeeping (#24 failure logging, #31 concurrency cap) ──
+  let embedInFlight = 0;
+  let embedFailures = 0;
+  let embedSuccesses = 0;
+  const EMBED_CONCURRENCY = 3;
+  const MAX_EMBED_LOG = 3; // log first N failures per session to stderr
+
+  async function boundedEmbed(content: string, memId: number): Promise<void> {
+    if (embedInFlight >= EMBED_CONCURRENCY) return; // skip; picked up again next session
+    embedInFlight++;
+    try {
+      const vec = await embed(content, config);
+      if (vec) {
+        store.setEmbedding(memId, vecToBlob(vec));
+        embedSuccesses++;
+      }
+    } catch (e) {
+      embedFailures++;
+      if (embedFailures <= MAX_EMBED_LOG) {
+        process.stderr.write(
+          `brain: embedding failed (${embedFailures}): ${e instanceof Error ? e.message : String(e)}\n`,
+        );
+      }
+    } finally {
+      embedInFlight--;
+    }
+  }
+
   // ── Initialize ──────────────────────────────────────────────
   try {
     config = loadBrainConfig();
@@ -87,6 +115,9 @@ export default function brain(pi: ExtensionAPI): void {
       config = reloadBrainConfig();
       sessionReflectionCount = 0;
       gateAccum = []; // reset accumulation across sessions
+      embedInFlight = 0;
+      embedFailures = 0;
+      embedSuccesses = 0;
 
       trace.resetSession(ctx.sessionManager);
 
@@ -148,9 +179,7 @@ export default function brain(pi: ExtensionAPI): void {
       if (config.embeddings?.enabled !== false) {
         const unembedded = store.getMemoriesWithoutEmbeddings(20);
         for (const mem of unembedded) {
-          embed(mem.content, config).then(vec => {
-            if (vec) store.setEmbedding(mem.id, vecToBlob(vec));
-          }).catch(() => {});
+          void boundedEmbed(mem.content, mem.id);
         }
       }
     } catch (err) {
@@ -315,9 +344,7 @@ export default function brain(pi: ExtensionAPI): void {
           for (const mem of validated.memories) {
             const stored = store.searchMemories(mem.content.slice(0, 50), 1);
             if (stored.length) {
-              embed(stored[0].content, config).then(vec => {
-                if (vec) store.setEmbedding(stored[0].id, vecToBlob(vec));
-              }).catch(() => {});
+              void boundedEmbed(stored[0].content, stored[0].id);
             }
           }
         }
@@ -338,7 +365,12 @@ export default function brain(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async () => {
     try {
       if (config.modules.consolidate && config.consolidation.runOnShutdown) {
-        await consolidate(store, cognitionPool, config);
+        await Promise.race([
+          consolidate(store, cognitionPool, config),
+          new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+        ]).catch((err) => {
+          process.stderr.write(`brain: shutdown consolidation timed out or failed: ${errMsg(err)}\n`);
+        });
       }
 
       if (config.modules.vault && config.vault.syncOnShutdown) {
@@ -403,7 +435,7 @@ export default function brain(pi: ExtensionAPI): void {
 
         switch (sub) {
           case "status":
-            ctx.ui.notify(handleBrainStatus(store, config), "info");
+            ctx.ui.notify(handleBrainStatus(store, config, { successes: embedSuccesses, failures: embedFailures, inFlight: embedInFlight }), "info");
             return;
           case "sync":
             await vaultSyncOutbound(store, config);
@@ -492,7 +524,11 @@ function handleEvolveAction(action: string, target: string | undefined, store: B
   }
 }
 
-function handleBrainStatus(store: BrainStore, config: BrainConfig): string {
+function handleBrainStatus(
+  store: BrainStore,
+  config: BrainConfig,
+  embedStats?: { successes: number; failures: number; inFlight: number },
+): string {
   const memStats = store.getMemoryStats();
   const procStats = store.getProcedureStats();
   const active = listActiveSkills(config);
@@ -515,6 +551,9 @@ function handleBrainStatus(store: BrainStore, config: BrainConfig): string {
     "### Vault",
     `  Location: ${config.markdownRoot}`,
     "",
+    ...(embedStats
+      ? [`### Embeddings`, `  ${embedStats.successes} ok, ${embedStats.failures} failed, ${embedStats.inFlight} in-flight`, ""]
+      : []),
     "### Recent Activity",
     ...recentLogs.map((l) => `  [${l.createdAt}] ${l.kind}: ${l.details.slice(0, 100)}`),
   ].join("\n");

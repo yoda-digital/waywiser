@@ -4,7 +4,7 @@
  * kanban's worker spawn, extensions/kanban.ts:135). Run the child, deliver
  * one prompt, collect the final assistant text, kill. Shared by the memory
  * gate (B) and consolidation pass 2 (D). Single-flight: one child at a time;
- * concurrent callers get a rejection, never a queue (spec §4 "≤ 1 concurrent gate").
+ * concurrent callers queue and wait their turn instead of being rejected.
  */
 import { createPiRpcClient, type PiRpcClient } from "./rpc.js";
 
@@ -18,9 +18,12 @@ export const LEAF_ARGS: readonly string[] = [
 ];
 
 let inFlight = 0;
+const waitQueue: Array<() => void> = [];
 
 export async function runChild(opts: { prompt: string; totalMs?: number; cwd?: string }): Promise<string> {
-	if (inFlight > 0) throw new Error("llmcall: child already running");
+	if (inFlight >= 1) {
+		await new Promise<void>((resolve) => waitQueue.push(resolve));
+	}
 	const totalMs = opts.totalMs ?? 15_000;
 	inFlight++;
 	let state: PiRpcClient | undefined;
@@ -39,5 +42,7 @@ export async function runChild(opts: { prompt: string; totalMs?: number; cwd?: s
 	} finally {
 		state?.stop();
 		inFlight--;
+		const next = waitQueue.shift();
+		if (next) next();
 	}
 }

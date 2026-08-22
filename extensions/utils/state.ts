@@ -6,14 +6,19 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomBytes } from "node:crypto";
 import { logLegacy } from "./trace.js";
 
 // Kept in sync with package.json "version" by hand (bug fix: was stuck at "0.1.0").
 export const WAYWISER_VERSION = "1.0.0";
 
+let _home: string | undefined;
+
 export function waywiserHome(): string {
+	if (_home) return _home;
 	const home = process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser");
 	fs.mkdirSync(home, { recursive: true });
+	_home = home;
 	return home;
 }
 
@@ -95,6 +100,7 @@ export function db_(): DatabaseSync {
 		["verbatim", "TEXT"],
 		["valid_at", "TEXT"],
 		["supersedes_id", "INTEGER"],
+		["last_verified", "TEXT"],
 	] as const) {
 		if (!memCols.some((r) => r.name === col)) d.exec(`ALTER TABLE memories ADD COLUMN ${col} ${def}`);
 	}
@@ -173,8 +179,7 @@ export function memlogRecent(limit = 50): Array<{ id: number; kind: string; text
 export function appendEpisode(session: string, summary: string): void {
 	const d = db_();
 	d.prepare("INSERT INTO episodes (session, summary) VALUES (?, ?)").run(session, summary);
-	const over = d.prepare("SELECT id FROM episodes ORDER BY id DESC LIMIT 1 OFFSET 200").get() as { id: number } | undefined;
-	if (over) d.prepare("DELETE FROM episodes WHERE id = ?").run(over.id);
+	d.prepare("DELETE FROM episodes WHERE id <= (SELECT id FROM episodes ORDER BY id DESC LIMIT 1 OFFSET 200)").run();
 }
 
 export interface MemSettings {
@@ -257,6 +262,7 @@ export function readJSON<T>(file: string, fallback: T): T {
 	try {
 		return JSON.parse(raw) as T;
 	} catch (e) {
+		try { fs.copyFileSync(file, `${file}.bak`); } catch { /* best effort */ }
 		process.stderr.write(`waywiser: ${file} contains invalid JSON, using defaults: ${e instanceof Error ? e.message : String(e)}\n`);
 		return fallback;
 	}
@@ -323,8 +329,7 @@ export function registry_(): WaywiserRegistry {
 
 /** Short id for cron jobs / subagents. */
 export function shortId(prefix: string): string {
-	const rand = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-	return `${prefix}_${rand}`;
+	return `${prefix}_${randomBytes(6).toString("hex")}`;
 }
 
 /**
