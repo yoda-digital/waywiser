@@ -1,6 +1,7 @@
 ---
 name: pa-research
 description: Research and intelligence gathering — systematic search, source evaluation, competitive analysis, market research, literature review, fact-checking. Use when asked to research a topic, gather information, verify claims, or produce analysis.
+model_tier: verified
 ---
 
 # Research & Intelligence

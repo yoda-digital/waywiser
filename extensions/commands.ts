@@ -21,7 +21,7 @@ import * as fs from "node:fs";
 import { db_, WAYWISER_VERSION, homeFile, registry_, shortId, memSettings } from "./utils/state.js";
 import { memAction, parseMemCommandLine, runRecallText } from "./memory.js";
 import { runConsolidate, formatConsolidateReport } from "./mem-dream.js";
-import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
+import { registerInjection, removeInjection, PRIORITIES, cacheStatsLine, injectionStats } from "./utils/prompt-budget.js";
 
 interface Goal {
 	id: string;
@@ -191,6 +191,10 @@ export default function commands(pi: ExtensionAPI): void {
 				lines.push(`kanban: ${cards.length} cards (${cards.filter((c) => c.status === "done").length} done)`);
 				lines.push(`registry subagents: ${registry_().subagents.size}`);
 				lines.push(`context usage: ${ctx.getContextUsage() ? JSON.stringify(ctx.getContextUsage()) : "n/a"} · model: ${ctx.model ? `${ctx.model.provider ?? "?"}/${ctx.model.id ?? String(ctx.model)}` : "n/a"}`);
+				const cache = cacheStatsLine();
+				const inj = injectionStats();
+				lines.push(cache);
+				lines.push(`prompt injections: ${inj.count} active (${inj.totalChars} chars) — ${inj.keys.join(", ")}`);
 			} catch (e) {
 				lines.push(`status error: ${String(e)}`);
 			}

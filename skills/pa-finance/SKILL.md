@@ -1,6 +1,7 @@
 ---
 name: pa-finance
 description: Financial management — budgeting, expense tracking, invoice review, financial reporting, cost analysis, forecasting. Use for budget planning, spending analysis, financial document review, or any numerical financial task.
+model_tier: experimental
 ---
 
 # Financial Management

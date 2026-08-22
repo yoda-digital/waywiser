@@ -1,6 +1,7 @@
 ---
 name: pa-tech-ops
 description: Technology operations — software setup, troubleshooting, digital tool workflows, system administration, cybersecurity hygiene, data backup. Use for IT support, tool configuration, tech-related operational tasks, and digital workspace management.
+model_tier: experimental
 ---
 
 # Technology Operations

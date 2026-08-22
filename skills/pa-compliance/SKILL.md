@@ -1,6 +1,7 @@
 ---
 name: pa-compliance
 description: Compliance and risk management — regulatory checklists, policy review, audit preparation, data protection (GDPR/CCPA), cybersecurity frameworks (NIST/ISO 27001), regulatory monitoring. Use for compliance assessments, regulatory questions, risk evaluation. Always flags when legal counsel is needed.
+model_tier: untested
 ---
 
 # Compliance & Risk Management

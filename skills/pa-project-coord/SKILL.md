@@ -1,6 +1,7 @@
 ---
 name: pa-project-coord
 description: Project coordination — work breakdown, milestone tracking, RACI assignments, dependency management, risk registers, status reports. Use for managing multi-step projects with dependencies and multiple stakeholders.
+model_tier: experimental
 ---
 
 # Project Coordination

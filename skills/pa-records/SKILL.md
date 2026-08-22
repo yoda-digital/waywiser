@@ -1,6 +1,7 @@
 ---
 name: pa-records
 description: Records and information management — filing systems, retention policies, document organization, compliance tagging, archive management, naming conventions. Use when organizing, archiving, classifying, or managing documents and information systems.
+model_tier: experimental
 ---
 
 # Records & Information Management

@@ -1,6 +1,7 @@
 ---
 name: pa-procurement
 description: Procurement and vendor management — RFP/RFQ drafting, vendor evaluation, TCO analysis, supplier scorecards, purchase order tracking, contract review. Use for sourcing, vendor comparison, procurement decisions, and supply chain tasks.
+model_tier: experimental
 ---
 
 # Procurement

@@ -1,6 +1,7 @@
 ---
 name: pa-protocol
 description: Etiquette and protocol — formal correspondence, cultural sensitivity, ceremony planning, VIP handling, diplomatic communication, international business customs, dress codes, forms of address. Use for protocol-sensitive situations, cross-cultural interactions, formal occasions, and diplomatic contexts.
+model_tier: untested
 ---
 
 # Etiquette & Protocol

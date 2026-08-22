@@ -1,6 +1,7 @@
 ---
 name: pa-stakeholder-comm
 description: Stakeholder communication — tone calibration, audience adaptation, difficult conversations, cross-cultural sensitivity, negotiation framing. Use for important messages, sensitive conversations, formal correspondence, or conflict resolution.
+model_tier: verified
 ---
 
 # Stakeholder Communication

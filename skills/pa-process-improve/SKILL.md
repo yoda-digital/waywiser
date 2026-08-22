@@ -1,6 +1,7 @@
 ---
 name: pa-process-improve
 description: Process improvement — workflow analysis, efficiency audits, bottleneck identification, automation opportunities, Lean/DMAIC methodology. Use when asked to improve, streamline, optimize, or automate any process. Meta-skill that can create other skills.
+model_tier: experimental
 ---
 
 # Process Improvement

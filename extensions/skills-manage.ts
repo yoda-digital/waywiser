@@ -86,16 +86,27 @@ export default function skillsManage(pi: ExtensionAPI): void {
 			if (row) onboarded = true;
 		} catch { /* db not ready yet — treat as not onboarded */ }
 
+		// Tier badges: ✅ verified, ⚠️ experimental, 🔬 untested (default: experimental)
+		const tierBadge = (s: SkillInfo): string => {
+			try {
+				const [fm] = parseFrontmatter(fs.readFileSync(path.join(s.directory, "SKILL.md"), "utf-8"));
+				const tier = fm.model_tier ?? "experimental";
+				return tier === "verified" ? "✅" : tier === "untested" ? "🔬" : "⚠️";
+			} catch {
+				return "⚠️";
+			}
+		};
+
 		const catalog = paSkills
 			.filter((s) => s.name !== "pa-onboard")
-			.map((s) => `  • ${s.name}: ${s.description}`)
+			.map((s) => `  ${tierBadge(s)} ${s.name}: ${s.description}`)
 			.join("\n");
 
 		const onboardNote = onboarded
 			? ""
 			: `\n⚠ PA system not yet onboarded. On the FIRST personal assistant request,\n`
 				+ `load \`skill_view\` name="pa-onboard" and run the setup wizard before\n`
-				+ `proceeding with the domain skill. This sets up daily/weekly review crons,\n`
+				+ `proceeding with the domain playbook. This sets up daily/weekly review crons,\n`
 				+ `captures preferences, and creates the PA kanban board.\n`;
 
 		registerInjection({
@@ -103,13 +114,13 @@ export default function skillsManage(pi: ExtensionAPI): void {
 			priority: PRIORITIES.PA_CATALOG,
 			cacheable: true, // stable within a session (skills don't change mid-session)
 			content:
-				`\n<!-- WAYWISER PA SKILLS (${paSkills.length} domains) -->\n`
+				`\n<!-- WAYWISER PLAYBOOKS (${paSkills.length} domains) -->\n`
 				+ `When the user asks for help with personal assistant tasks (time management,\n`
 				+ `writing, communication, research, events, finance, travel, decisions, etc.),\n`
-				+ `use \`skill_view\` name="<skill>" to load the relevant domain skill, then follow it.\n`
+				+ `use \`skill_view\` name="<playbook>" to load the relevant domain playbook, then follow it.\n`
 				+ onboardNote
-				+ `\nAvailable PA skills:\n${catalog}\n`
-				+ `<!-- END PA SKILLS -->\n`,
+				+ `\nAvailable playbooks:\n${catalog}\n`
+				+ `<!-- END PLAYBOOKS -->\n`,
 		});
 		// NO return of { systemPrompt: ... } — buildSystemPrompt handles assembly
 		return {};

@@ -1,6 +1,7 @@
 ---
 name: pa-event-manage
 description: Event planning and management — venue logistics, timelines, vendor coordination, attendee communication, run-of-show, post-event review. Use when organizing meetings, conferences, workshops, dinners, or any gatherings.
+model_tier: experimental
 ---
 
 # Event Management
