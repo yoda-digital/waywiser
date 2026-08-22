@@ -43,9 +43,6 @@ import { checkEvolutionTriggers, promotePending } from "./evolve.ts";
 import { vaultSyncInbound, vaultSyncOutbound } from "./vault.ts";
 import { detectProjectKey } from "./policy.ts";
 import type { BrainConfig } from "./types.ts";
-// NOTE: 4 levels up (brain → extensions → brain → plugins → waywiser root), matching
-// the existing "../../../../extensions/utils/state.js" dynamic import below.
-import { registerInjection, removeInjection, PRIORITIES } from "../../../../extensions/utils/prompt-budget.js";
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
@@ -174,10 +171,7 @@ export default function brain(pi: ExtensionAPI): void {
         trace.turnEnd({ role: "user", content: event.prompt ?? "" });
       }
 
-      if (config.recall.mode === "off") {
-        removeInjection("brain-context");
-        return; // truly off — no recall path runs
-      }
+      if (config.recall.mode === "off") return; // truly off — no recall path runs
 
       const projectKey = detectProjectKey(ctx.cwd, config);
       const embeddingsEnabled = config.embeddings?.enabled !== false;
@@ -194,15 +188,9 @@ export default function brain(pi: ExtensionAPI): void {
 
       trace.noteRecall(recalled);
 
-      if (!recalled.items.length) {
-        removeInjection("brain-context");
-        return;
-      }
+      if (!recalled.items.length) return;
 
       if (config.recall.useCustomMessage) {
-        // customMessage bypasses the prompt budget manager entirely — remove
-        // any stale brain-context injection so it is never double-injected.
-        removeInjection("brain-context");
         return {
           message: {
             customType: "waywiser/brain-context",
@@ -217,16 +205,18 @@ export default function brain(pi: ExtensionAPI): void {
         };
       }
 
-      registerInjection({
-        key: "brain-context",
-        priority: PRIORITIES.BRAIN_CONTEXT,
-        cacheable: false, // per-turn RRF recall
-        content: "\n" + renderBrainContext(recalled),
-      });
-      // NO return of { systemPrompt: ... } — buildSystemPrompt handles assembly
+      // Brain is loaded as a separate Pi extension AFTER core (see
+      // bin/waywiser), so Pi's before_agent_start handlers already ran
+      // core's assembly pass by the time this handler fires — the shared
+      // prompt-budget injection registry has already been consumed into
+      // event.systemPrompt. Brain is therefore the one extension that
+      // bypasses that registry entirely: it appends its recall context
+      // directly on top of the already-assembled prompt.
+      return {
+        systemPrompt: (event.systemPrompt ?? "") + "\n" + renderBrainContext(recalled),
+      };
     } catch (err) {
       process.stderr.write(`brain: recall error: ${errMsg(err)}\n`);
-      removeInjection("brain-context");
     }
   });
 
