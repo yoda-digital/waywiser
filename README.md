@@ -61,14 +61,9 @@ waywiser/
             └── obsidian/        ← Obsidian integration (plugin-in-plugin)
 ```
 
-## Install from Source
+## Install
 
 Node >= 22.5, `pi` on PATH.
-
-### Level 1: Waywiser Core
-
-The base agent — memory, delegation, kanban, MCP, cron, notifications,
-permissions, and structured observability.
 
 ```bash
 git clone git@github.com:yoda-digital/waywiser.git
@@ -77,57 +72,34 @@ npm install
 bin/waywiser
 ```
 
-**What you get:**
-- Cross-session memory (FTS5) with export/import and consolidation
+That's it. Brain (persistent memory with procedural preferences, RRF recall,
+auto-evolution, and vault sync) is a core component — it loads automatically
+on every launch. On first run, Waywiser walks you through setup: timezone,
+working hours, daily/weekly reviews, notification channels.
+
+**What you get out of the box:**
+- Cross-session memory (FTS5 + Brain's reciprocal rank fusion recall)
+- Procedural preferences ("when X, prefer Y over Z") with evidence tracking
+- Auto-evolution: mature procedures → candidate skills → competitive evaluation
 - Task delegation (3 concurrent subagents, depth-capped at 2)
 - Kanban boards (authenticated web dashboard + TUI + markdown)
 - MCP integrations (Gmail, Calendar, Notion, etc.)
 - Scheduled jobs (cron + one-shot timers, auto-pause on repeated failures)
-- Desktop/Telegram/webhook notifications (shell-injection-proof)
+- Desktop/Telegram/webhook notifications
 - SOUL.md identity persistence with consolidation
-- Permission engine (8-class risk taxonomy, configurable policy)
-- Planning mode (`/plan` — blocks writes while allowing reads)
-- Session budgets (200 tool calls, 10 subagent spawns per session)
+- Permission engine (8-class risk taxonomy, planning mode, session budgets)
 - Structured trace events with `/trace export`
 - Goal budgets (`/goal --max-steps 30 --deadline 2026-09-01`)
-- SSRF protection on web tools (private IP blocking)
-- Prompt cache telemetry (`/waywiser status`)
+- SSRF protection, sandboxed code execution, prompt cache telemetry
+- 19 PA playbooks (time management, finance, travel, research, etc.)
+- Obsidian-compatible vault at `~/.waywiser/brain/`
 
-### Level 2: Waywiser + Brain Plugin
+### Optional: Obsidian Plugin
 
-Adds persistent memory with procedural preferences, reciprocal rank fusion
-recall, auto-evolution of skills, and an Obsidian-compatible vault. The
-launcher auto-discovers Brain from `plugins/brain/`.
-
-```bash
-git clone git@github.com:yoda-digital/waywiser.git
-cd waywiser
-npm install
-bin/waywiser    # Brain loads automatically
-```
-
-No extra steps — `bin/waywiser` scans `plugins/` and loads everything it finds.
-On first run, it creates `~/.waywiser/brain.json` from the example config.
-
-**What Brain adds:**
-- Learning at `agent_settled` boundaries (not mid-turn)
-- Reciprocal rank fusion recall (lexical + scope + usage + confidence + recency + semantic)
-- Procedural preferences ("when X, prefer Y over Z") with evidence tracking
-- Auto-evolution: mature procedures → candidate skills → competitive evaluation → promotion
-- Obsidian-native vault sync (wikilinks, Properties, callouts, mermaid diagrams, MOCs, canvas)
-- RecallProvider integration (Brain's RRF recall replaces core FTS when loaded)
-- `/brain status`, `/brain sync`, `/brain consolidate`, `/brain evolve *` commands
-- `evolve` tool for evolution inspection
-
-**Verify Brain loaded:**
-```
-/brain status
-```
-
-### Level 3: Waywiser + Brain + Obsidian Plugin
-
-The Obsidian plugin is a plugin OF Brain (not of Waywiser directly). It lives
-inside Brain's distribution at `plugins/brain/plugins/obsidian/`.
+If you use [Obsidian](https://obsidian.md), the Brain vault at
+`~/.waywiser/brain/` is already Obsidian-compatible (wikilinks, Properties,
+callouts, mermaid diagrams). For a richer experience — dashboard sidebar,
+command palette, graph coloring, confidence bars — install the Obsidian plugin:
 
 ```bash
 git clone git@github.com:yoda-digital/waywiser.git
