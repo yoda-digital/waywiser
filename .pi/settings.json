@@ -1,0 +1,15 @@
+{
+  "packages": [
+    {
+      "source": "git:github.com/yoda-digital/pi-superpowers",
+      "extensions": [],
+      "skills": []
+    },
+    {
+      "source": "git:github.com/yoda-digital/pi-evolver",
+      "extensions": [],
+      "skills": []
+    },
+    "git:github.com/yoda-digital/pi-statusbar"
+  ]
+}
