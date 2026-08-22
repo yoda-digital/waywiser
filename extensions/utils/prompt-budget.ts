@@ -43,14 +43,16 @@ export interface PromptInjection {
 
 /** Priority assignments (lower = higher priority). */
 export const PRIORITIES = {
-  SOUL:           0,  // identity — never trimmed
-  MEMORY_DIGEST:  1,  // session-stable memory snapshot
-  GOALS:          2,  // active goal tree
-  MEMORY_RECALL:  3,  // per-turn selective recall
-  BRAIN_CONTEXT:  3,  // per-turn Brain RRF recall (same level as core recall)
-  PA_CATALOG:     4,  // PA playbook catalog
-  KANBAN:         5,  // open kanban cards summary
-  PERMISSIONS:    6,  // permission reminders
+  SOUL:            0,  // identity — never trimmed
+  MEMORY_DIGEST:   1,  // session-stable memory snapshot
+  GOALS:           2,  // active goal tree
+  META_CORRECTION: 2,  // one-turn "[Correction applied]" note (meta-skills adaptability)
+  MEMORY_RECALL:   3,  // per-turn selective recall
+  BRAIN_CONTEXT:   3,  // per-turn Brain RRF recall (same level as core recall)
+  META_EMOTIONAL:  3,  // per-turn "[Emotional awareness]" note (meta-skills)
+  PA_CATALOG:      4,  // PA playbook catalog
+  KANBAN:          5,  // open kanban cards summary
+  PERMISSIONS:     6,  // permission reminders
 } as const;
 
 // ── Registry ──────────────────────────────────────────────────────

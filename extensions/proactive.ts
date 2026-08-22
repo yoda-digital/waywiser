@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { db_, waywiserHome, readJSON, writeJSON, registry_ } from "./utils/state.js";
 import { getQuiet, inDnd } from "./cronjob.js";
 import { sendNotification } from "./notify.js";
+import { applyDiscretion } from "./meta-skills.js";
 
 // ── signal model ─────────────────────────────────────────────────────────
 
@@ -265,9 +266,12 @@ export default function proactive(pi: ExtensionAPI): void {
 		}
 
 		const prioritized = orient(signals, lastAlerts, cfg.dedupeWindowMs, { quiet: isQuietNow() });
-		lastSignalCount = prioritized.length;
+		// Discretion (spec 07 §3.2): never propagate sensitive content, don't nag
+		// (max 3/hour), don't interrupt a deep conversation with non-critical signals.
+		const discreet = applyDiscretion(prioritized);
+		lastSignalCount = discreet.length;
 
-		for (const signal of prioritized) {
+		for (const signal of discreet) {
 			if (!signal.requiresLLM) {
 				// P0 interrupts always bypass quiet hours (they already passed the
 				// quiet gate above for P0 by construction); notify-only signals never
@@ -336,12 +340,14 @@ export default function proactive(pi: ExtensionAPI): void {
 					ctx.ui.notify(`signal scan failed: ${String(e)}`, "error");
 					return;
 				}
-				// Preview against a throwaway dedup map so this doesn't consume the
-				// real dedupe window for signals that haven't actually been acted on.
+				// Preview against a throwaway dedup map + discretion sendLog so this
+				// doesn't consume the real dedupe window or notification quota for
+				// signals that haven't actually been acted on.
 				const preview = orient(signals, new Map(), cfg.dedupeWindowMs, { quiet: isQuietNow() });
+				const previewDiscreet = applyDiscretion(preview, { sendLog: [] });
 				ctx.ui.notify(
-					preview.length
-						? preview.map((s) => `P${s.priority} [${s.requiresLLM ? "turn" : "notify"}] ${s.title}: ${s.body}`).join("\n")
+					previewDiscreet.length
+						? previewDiscreet.map((s) => `P${s.priority} [${s.requiresLLM ? "turn" : "notify"}] ${s.title}: ${s.body}`).join("\n")
 						: "No pending signals.",
 					"info",
 				);

@@ -29,6 +29,7 @@ const { getQuiet, setQuiet, parseQuietSetting, inDnd, msUntilDndEnd, parseHM } =
 const parseCron = jiti("../extensions/cronjob.js").parseCron;
 const { LEAF_ARGS, runChild } = jiti("../extensions/utils/llmcall.js");
 const { gatherSignals, orient, getProactiveConfig, setProactiveConfig } = jiti("../extensions/proactive.js");
+const { detectEmotionalSignal, detectCorrection, applyDiscretion, containsSensitiveContent, gatherDelegationSignals } = jiti("../extensions/meta-skills.js");
 
 // soul.ts has a default export (extension entry point, not a named-export module);
 // load it the same way test/smoke.test.ts's loadExt() does — handle both raw-function
@@ -1138,4 +1139,114 @@ test("proactive: config defaults + set/get roundtrip preserves sibling keys", ()
 
 	// Reset for any later tests that assume defaults.
 	fs.rmSync(path.join(waywiserHome(), "config.json"), { force: true });
+});
+
+// ---------------------------------------------------------------- meta-skills (spec 07 phase 3)
+test("meta-skills: emotional signal detects frustration from a short reply after a long exchange", () => {
+	assert.equal(detectEmotionalSignal("fine", 2000), "frustrated");
+});
+
+test("meta-skills: emotional signal detects frustration from correction language", () => {
+	assert.equal(detectEmotionalSignal("No, that's wrong. Try again.", 0), "frustrated");
+});
+
+test("meta-skills: emotional signal detects satisfaction from positive markers", () => {
+	assert.equal(detectEmotionalSignal("Perfect, thanks!", 0), "satisfied");
+});
+
+test("meta-skills: emotional signal stays neutral for an ordinary polite request", () => {
+	assert.equal(detectEmotionalSignal("Could you please add unit tests for the parser module as well", 500), "neutral");
+});
+
+test("meta-skills: emotional signal is neutral on an empty message", () => {
+	assert.equal(detectEmotionalSignal("", 5000), "neutral");
+});
+
+test("meta-skills: correction pattern extracts the preferred value", () => {
+	const c = detectCorrection("no, use TypeScript");
+	assert.ok(c);
+	assert.equal(c.kind, "preference");
+	assert.equal(c.value, "TypeScript");
+	assert.equal(c.note, "[Correction applied] User prefers TypeScript. Adjusted for this session.");
+});
+
+test("meta-skills: correction pattern detects a strong 'always use' preference", () => {
+	const c = detectCorrection("always use tabs, not spaces");
+	assert.ok(c);
+	assert.equal(c.kind, "preference");
+	assert.equal(c.value, "tabs");
+});
+
+test("meta-skills: correction pattern detects a style adjustment (too verbose -> shorter)", () => {
+	const c = detectCorrection("that was too verbose");
+	assert.ok(c);
+	assert.equal(c.kind, "style");
+	assert.equal(c.value, "shorter");
+});
+
+test("meta-skills: correction pattern detects a request for more detail", () => {
+	const c = detectCorrection("can you give me more detail next time");
+	assert.ok(c);
+	assert.equal(c.value, "more detail");
+});
+
+test("meta-skills: correction pattern returns null for ordinary messages", () => {
+	assert.equal(detectCorrection("what does this function do?"), null);
+});
+
+test("meta-skills: discretion suppresses non-critical signals during a deep conversation", () => {
+	const s = { key: "a", priority: 1 as const, requiresLLM: true, title: "t", body: "b" };
+	const out = applyDiscretion([s], { deepConversationTurns: 6, sendLog: [] });
+	assert.equal(out.length, 0);
+});
+
+test("meta-skills: discretion still allows P0 interrupts during a deep conversation", () => {
+	const p0 = { key: "p0", priority: 0 as const, requiresLLM: false, title: "t", body: "b" };
+	const out = applyDiscretion([p0], { deepConversationTurns: 10, sendLog: [] });
+	assert.equal(out.length, 1);
+});
+
+test("meta-skills: discretion caps non-critical notifications at 3 per hour", () => {
+	const log: number[] = [];
+	const mk = (k: string) => ({ key: k, priority: 1 as const, requiresLLM: true, title: "t", body: "b" });
+	applyDiscretion([mk("s1")], { sendLog: log });
+	applyDiscretion([mk("s2")], { sendLog: log });
+	applyDiscretion([mk("s3")], { sendLog: log });
+	const out = applyDiscretion([mk("s4")], { sendLog: log });
+	assert.equal(out.length, 0);
+});
+
+test("meta-skills: discretion drops signals that look like they carry sensitive content", () => {
+	const s = { key: "leak", priority: 1 as const, requiresLLM: true, title: "Password found", body: "your password is hunter2" };
+	const out = applyDiscretion([s], { sendLog: [] });
+	assert.equal(out.length, 0);
+});
+
+test("meta-skills: containsSensitiveContent flags common secret/financial markers", () => {
+	assert.ok(containsSensitiveContent("here is the api_key: abc123"));
+	assert.ok(containsSensitiveContent("card number 4111 1111 1111 1111"));
+	assert.ok(!containsSensitiveContent("the deploy finished successfully"));
+});
+
+test("meta-skills: gatherDelegationSignals finds a kanban card assigned to subagent with no worker running", () => {
+	db_().prepare("INSERT INTO cards (id, title, status, assignee) VALUES (?,?,?,?)").run("K_mt_card1", "Multitask test card", "todo", "subagent");
+	const signals = gatherDelegationSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "card-K_mt_card1");
+	assert.ok(hit, "expected a kanban-card delegation signal");
+	assert.equal(hit.kind, "kanban-card");
+	assert.equal(hit.title, "Multitask test card");
+});
+
+test("meta-skills: gatherDelegationSignals ignores a card whose worker is already running", () => {
+	db_().prepare("INSERT INTO cards (id, title, status, assignee, worker_child) VALUES (?,?,?,?,?)").run("K_mt_card2", "Already running", "doing", "subagent", "kc_test");
+	const signals = gatherDelegationSignals(db_());
+	assert.ok(!signals.some((s: { key: string }) => s.key === "card-K_mt_card2"));
+});
+
+test("meta-skills: gatherDelegationSignals finds an active goal with zero progress", () => {
+	db_().prepare("INSERT INTO goals (id, text, status) VALUES (?,?,?)").run("g_mt_goal1", "Research competitor pricing", "active");
+	const signals = gatherDelegationSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "goal-g_mt_goal1");
+	assert.ok(hit, "expected a goal-research delegation signal");
+	assert.equal(hit.kind, "goal-research");
 });
