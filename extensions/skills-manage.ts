@@ -9,6 +9,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { waywiserHome, db_ } from "./utils/state.js";
+import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
 
 interface SkillInfo {
 	name: string;
@@ -73,7 +74,10 @@ export default function skillsManage(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", async (_event, ctx: ExtensionContext) => {
 		const skills = discoverSkills(ctx.cwd);
 		const paSkills = skills.filter((s) => s.name.startsWith("pa-"));
-		if (!paSkills.length) return {};
+		if (!paSkills.length) {
+			removeInjection("pa-catalog");
+			return {};
+		}
 
 		// Check if PA onboarding has been completed
 		let onboarded = false;
@@ -94,15 +98,21 @@ export default function skillsManage(pi: ExtensionAPI): void {
 				+ `proceeding with the domain skill. This sets up daily/weekly review crons,\n`
 				+ `captures preferences, and creates the PA kanban board.\n`;
 
-		return {
-			systemPrompt: `\n<!-- WAYWISER PA SKILLS (${paSkills.length} domains) -->\n`
+		registerInjection({
+			key: "pa-catalog",
+			priority: PRIORITIES.PA_CATALOG,
+			cacheable: true, // stable within a session (skills don't change mid-session)
+			content:
+				`\n<!-- WAYWISER PA SKILLS (${paSkills.length} domains) -->\n`
 				+ `When the user asks for help with personal assistant tasks (time management,\n`
 				+ `writing, communication, research, events, finance, travel, decisions, etc.),\n`
 				+ `use \`skill_view\` name="<skill>" to load the relevant domain skill, then follow it.\n`
 				+ onboardNote
 				+ `\nAvailable PA skills:\n${catalog}\n`
 				+ `<!-- END PA SKILLS -->\n`,
-		};
+		});
+		// NO return of { systemPrompt: ... } — buildSystemPrompt handles assembly
+		return {};
 	});
 
 	pi.registerTool({

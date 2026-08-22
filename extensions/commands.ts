@@ -21,6 +21,7 @@ import * as fs from "node:fs";
 import { db_, WAYWISER_VERSION, homeFile, registry_, shortId, memSettings } from "./utils/state.js";
 import { memAction, parseMemCommandLine, runRecallText } from "./memory.js";
 import { runConsolidate, formatConsolidateReport } from "./mem-dream.js";
+import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
 
 interface Goal {
 	id: string;
@@ -63,10 +64,14 @@ export default function commands(pi: ExtensionAPI): void {
 		return "\n<!-- WAYWISER GOALS -->\nCurrent goal tree:\n" + goalTree(g) + "\n<!-- WAYWISER GOALS END -->";
 	};
 
-	pi.on("before_agent_start", (event) => {
+	pi.on("before_agent_start", () => {
 		const block = activeGoals();
-		if (!block) return;
-		return { systemPrompt: event.systemPrompt + block };
+		if (block) {
+			registerInjection({ key: "goals", priority: PRIORITIES.GOALS, cacheable: false, content: block });
+		} else {
+			removeInjection("goals");
+		}
+		// NO return — buildSystemPrompt handles assembly
 	});
 
 	pi.on("agent_end", (_e, ctx) => {

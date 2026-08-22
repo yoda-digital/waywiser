@@ -10,6 +10,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Type } from "typebox";
 import * as fs from "node:fs";
 import { homeFile, registry_ } from "./utils/state.js";
+import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
 
 export default function soul(pi: ExtensionAPI): void {
 	let soulContent = "";
@@ -22,17 +23,25 @@ export default function soul(pi: ExtensionAPI): void {
 		}
 	};
 
+	// Register (or refresh) the SOUL injection with the budget manager.
+	// Priority 0, cacheable: always the first block of the assembled prompt,
+	// which preserves the prompt-cache-friendly stable prefix.
+	const registerSoul = (): void => {
+		if (soulContent) {
+			registerInjection({
+				key: "soul",
+				priority: PRIORITIES.SOUL,
+				cacheable: true,
+				content: `\n<!-- WAYWISER SOUL BEGIN -->\n${soulContent}\n<!-- WAYWISER SOUL END -->\n`,
+			});
+		} else {
+			removeInjection("soul");
+		}
+	};
+
 	pi.on("session_start", () => {
 		loadSoul();
-	});
-
-	pi.on("before_agent_start", (event) => {
-		loadSoul();
-		if (!soulContent) return;
-		const soulBlock = `\n\n<!-- WAYWISER SOUL BEGIN -->\n${soulContent}\n<!-- WAYWISER SOUL END -->\n`;
-		// Prepend: identity comes before everything else, and the block is stable
-		// across turns (append-only file), so the prefix cache stays warm.
-		return { systemPrompt: soulBlock + event.systemPrompt };
+		registerSoul();
 	});
 
 	pi.registerTool({
@@ -153,6 +162,7 @@ export default function soul(pi: ExtensionAPI): void {
 			lines.splice(cursor, 0, line);
 			fs.writeFileSync(file, lines.join("\n"));
 			loadSoul();
+			registerSoul();
 			registry_().log("soul", `appended ${section.replace("## ", "")}: ${text.slice(0, 120)}`);
 			ctx.ui.setStatus("waywiser-*:soul", `soul: +${params.action === "append_preference" ? "preference" : "lesson"}`);
 			return ok(`Appended to SOUL.md under "${section}":\n${line}`);
