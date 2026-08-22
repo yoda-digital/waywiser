@@ -7,7 +7,7 @@
  * steering the model toward `kanban` instead.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { boardOps } from "./kanban.js";
+import { boardOps } from "./kanban/ops.js";
 
 export default function todoCompat(pi: ExtensionAPI): void {
 	pi.registerCommand("todo", {

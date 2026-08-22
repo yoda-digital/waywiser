@@ -237,42 +237,54 @@ test("cron quiet: setQuiet/getQuiet round-trip and off clears the file", () => {
 
 
 // ---------------------------------------------------------------- kanban board ops
-const { boardOps, parseDue } = jiti("../extensions/kanban.js");
+const { boardOps } = jiti("../extensions/kanban/ops.js");
+const { parseDue } = jiti("../extensions/kanban/shared.js");
+
+// Card IDs are race-safe random hex (crypto.randomUUID-based, fix #30) — no
+// longer sequential K1/K2 — so tests capture the id returned by newCard()
+// instead of assuming a fixed format.
+const cardId = (r: { ok: boolean; msg: string }): string => r.msg.split(/\s/)[0];
 
 test("kanban: ops roundtrip on an isolated board file", () => {
 	const want = (name: string, r: { ok: boolean; msg: string }): void => assert.ok(r.ok, `${name}: ${r.msg}`);
-	want("new", boardOps.newCard("Write module tests"));
-	want("prioritize", boardOps.setPriority("K1", "high"));
-	want("due", boardOps.setDue("K1", "@2020-01-01T00:00:00Z")); // already past → overdue
-	want("new+list", boardOps.newCard("Draft report"));
+	const rNew1 = boardOps.newCard("Write module tests");
+	want("new", rNew1);
+	const id1 = cardId(rNew1);
+	want("prioritize", boardOps.setPriority(id1, "high"));
+	want("due", boardOps.setDue(id1, "@2020-01-01T00:00:00Z")); // already past → overdue
+	const rNew2 = boardOps.newCard("Draft report");
+	want("new+list", rNew2);
+	const id2 = cardId(rNew2);
 	const listRes = boardOps.list();
 	assert.ok(listRes.ok);
-	assert.ok(listRes.msg.includes("K1") && listRes.msg.includes("K2"));
-	assert.ok(listRes.msg.indexOf("K1") < listRes.msg.indexOf("K2"), "high priority + overdue must sort first");
+	assert.ok(listRes.msg.includes(id1) && listRes.msg.includes(id2));
+	assert.ok(listRes.msg.indexOf(id1) < listRes.msg.indexOf(id2), "high priority + overdue must sort first");
 	assert.ok(listRes.msg.includes("OVERDUE"), "past-due card must be flagged OVERDUE");
 	const stats = boardOps.stats();
 	assert.ok(stats.ok && stats.msg.includes("todo=2") && stats.msg.includes("overdue=1"), `stats: ${stats.msg}`);
-	const show = boardOps.show("K1");
+	const show = boardOps.show(id1);
 	assert.ok(show.ok && show.msg.includes("[high]") && /due/i.test(show.msg));
-	want("move", boardOps.move("K1", "doing"));
-	want("note", boardOps.note("K1", "needs fixtures"));
-	want("report", boardOps.report("K1", "did the thing"));
-	want("block", boardOps.block("K2", "waiting on api key"));
-	want("resume", boardOps.resume("K2"));
-	want("done", boardOps.done("K1"));
+	want("move", boardOps.move(id1, "doing"));
+	want("note", boardOps.note(id1, "needs fixtures"));
+	want("report", boardOps.report(id1, "did the thing"));
+	want("block", boardOps.block(id2, "waiting on api key"));
+	want("resume", boardOps.resume(id2));
+	want("done", boardOps.done(id1));
 	const stats2 = boardOps.stats();
 	assert.ok(stats2.ok && stats2.msg.includes("done=1") && stats2.msg.includes("todo=1") && !stats2.msg.includes("blocked"), `stats2: ${stats2.msg}`);
-	want("remove", boardOps.remove("K2"));
+	want("remove", boardOps.remove(id2));
 	want("clear_done", boardOps.clearDone());
 	assert.ok(boardOps.list().msg.includes("empty"));
 });
 
 test("kanban: errors on unknown ids, bad status, bad priority, bad due", () => {
 	assert.ok(!boardOps.show("K999").ok);
-	boardOps.newCard("x");
-	assert.ok(!boardOps.move("K1", "flying").ok, "invalid status must be rejected");
-	assert.ok(!boardOps.setPriority("K1", "urgent").ok, "invalid priority must be rejected");
-	assert.ok(!boardOps.setDue("K1", "tomorrowish").ok, "invalid due must be rejected");
+	const rNew = boardOps.newCard("x");
+	assert.ok(rNew.ok);
+	const id = cardId(rNew);
+	assert.ok(!boardOps.move(id, "flying").ok, "invalid status must be rejected");
+	assert.ok(!boardOps.setPriority(id, "urgent").ok, "invalid priority must be rejected");
+	assert.ok(!boardOps.setDue(id, "tomorrowish").ok, "invalid due must be rejected");
 	assert.ok(!boardOps.newCard("").ok, "new without title must be rejected");
 });
 

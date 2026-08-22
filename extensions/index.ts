@@ -33,7 +33,7 @@ const modules = [
 	"./cronjob.js",
 	"./notify.js",
 	"./clarify.js",
-	"./kanban.js",
+	"./kanban/index.js",
 	"./todo-compat.js",
 	"./commands.js",
 ];

@@ -181,6 +181,19 @@ export default function delegate(pi: ExtensionAPI): void {
 		}
 	});
 
+	pi.on("session_shutdown", () => {
+		// 1. Kill any still-running children.
+		for (const [, child] of children) {
+			if (child.status === "running") killChild(child);
+		}
+		// 2. Shut down idle pool clients (only if a pool was ever created —
+		//    avoids spinning one up just to tear it down).
+		if (delegatePool) {
+			delegatePool.shutdownAll();
+			delegatePool = null;
+		}
+	});
+
 	pi.registerTool({
 		name: "delegate_task",
 		label: "Delegate",

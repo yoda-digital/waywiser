@@ -92,6 +92,7 @@ interface CronState {
 	timer?: NodeJS.Timeout;
 	nextAt?: number;
 	carryoverText?: string;
+	consecutiveFailures: number;
 }
 
 /**
@@ -194,9 +195,26 @@ export default function cronjob(pi: ExtensionAPI): void {
 			pi.sendUserMessage(`[cronjob ${id}${state.job.name ? `: ${state.job.name}` : ""}] ${text}`, {
 				deliverAs: "followUp",
 			});
+			state.consecutiveFailures = 0;
 		} catch {
 			state.carryoverText = savedCarryover; // restore on delivery failure
+			state.consecutiveFailures = (state.consecutiveFailures ?? 0) + 1;
 			ctx?.ui?.notify?.(`cron job ${id} fired but agent is unavailable; carryover preserved for next fire`, "warning");
+			if (state.consecutiveFailures >= 5) {
+				if (state.timer) clearTimeout(state.timer);
+				state.timer = undefined;
+				state.job.enabled = 0;
+				db_().prepare("UPDATE cronjobs SET enabled = 0 WHERE id = ?").run(id);
+				registry_().log(
+					"cron",
+					`auto-paused ${id} (${state.job.name ?? state.job.schedule}) after ${state.consecutiveFailures} consecutive delivery failures`,
+				);
+				ctx?.ui?.notify?.(
+					`cron job ${id} auto-paused after ${state.consecutiveFailures} failures — use cronjob action=resume id=${id} to re-enable`,
+					"warning",
+				);
+				return; // do NOT re-arm
+			}
 		}
 		// Re-arm.
 		try {
@@ -253,6 +271,7 @@ export default function cronjob(pi: ExtensionAPI): void {
 						mode: String(row.mode || "session"),
 						enabled: Number(row.enabled) || 1,
 					},
+					consecutiveFailures: 0,
 				};
 				states.set(id, state);
 				if (state.job.mode === "session") {
@@ -320,7 +339,7 @@ export default function cronjob(pi: ExtensionAPI): void {
 					}
 					// session mode
 					db_().prepare("INSERT INTO cronjobs (id, name, schedule, prompt, mode) VALUES (?,?,?,?,?)").run(id, p.name ?? null, schedule, prompt, mode);
-					const state: CronState = { job: { id, name: p.name, schedule, prompt, mode, enabled: 1 } };
+					const state: CronState = { job: { id, name: p.name, schedule, prompt, mode, enabled: 1 }, consecutiveFailures: 0 };
 					states.set(id, state);
 					try {
 						const nf = nextFire(schedule);

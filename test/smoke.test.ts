@@ -54,7 +54,7 @@ const MODULES = [
 	"delegate",
 	"cronjob",
 	"clarify",
-	"kanban",
+	"kanban/index",
 	"todo-compat",
 	"commands",
 ];

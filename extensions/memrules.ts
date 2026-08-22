@@ -18,6 +18,16 @@ export function jaccard(a: string, b: string): number {
 	return inter / (A.size + B.size - inter);
 }
 
+/** Jaccard over pre-computed token sets (avoids re-tokenising on every pair comparison). */
+export function jaccardSets(a: Set<string>, b: Set<string>): number {
+	if (a.size === 0 || b.size === 0) return 0;
+	let inter = 0;
+	// Iterate the smaller set for O(min(|A|,|B|)) intersection.
+	const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+	for (const t of small) if (big.has(t)) inter++;
+	return inter / (a.size + b.size - inter);
+}
+
 export type MemSource = "user" | "agent" | "external";
 export const confForSource: Record<MemSource, number> = { user: 0.9, agent: 0.6, external: 0.3 };
 export const DUPLICATE_JACCARD = 0.85;
@@ -242,10 +252,22 @@ export function planPass1(rows: ConsolidateInputRow[], nowIso: string = new Date
 	}
 	const nearPairs: NearPair[] = [];
 	const alive = rows.filter((r) => !exactDropped.has(r.id));
-	for (let i = 0; i < alive.length && nearPairs.length < 20; i++) {
-		for (let j = i + 1; j < alive.length && nearPairs.length < 20; j++) {
-			const jj = jaccard(alive[i].content, alive[j].content);
-			if (jj >= NEAR_DUP_JACCARD) nearPairs.push({ a: alive[i].id, b: alive[j].id, j: jj });
+	// Pre-tokenise once per row (O(n)) instead of re-tokenising both sides on
+	// every pairwise comparison (was O(n²) tokenisations).
+	const tokenised = alive
+		.map((r) => ({ id: r.id, toks: tokens(r.content), size: 0 }))
+		.map((r) => ({ ...r, size: r.toks.size }));
+	// Sort by token-set size so the inner loop can bail out early: Jaccard(A,B)
+	// <= min(|A|,|B|) / max(|A|,|B|), so once the larger set exceeds the
+	// smaller by more than 1/NEAR_DUP_JACCARD (= 1.25), no further j can reach
+	// the threshold and we can break instead of scanning the rest.
+	const sorted = [...tokenised].sort((a, b) => a.size - b.size);
+	const sizeRatioBound = 1 / NEAR_DUP_JACCARD;
+	for (let i = 0; i < sorted.length && nearPairs.length < 20; i++) {
+		for (let j = i + 1; j < sorted.length && nearPairs.length < 20; j++) {
+			if (sorted[j].size > sorted[i].size * sizeRatioBound) break;
+			const jj = jaccardSets(sorted[i].toks, sorted[j].toks);
+			if (jj >= NEAR_DUP_JACCARD) nearPairs.push({ a: sorted[i].id, b: sorted[j].id, j: jj });
 		}
 	}
 	return { changes, nearPairs };

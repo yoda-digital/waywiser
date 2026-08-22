@@ -55,7 +55,7 @@ async function ddgSearch(query: string, signal?: AbortSignal): Promise<{ ok: boo
 		const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
 		const res = await fetch(url, {
 			signal,
-			headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) WaywiserAgent/0.1" },
+			headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0" },
 		});
 		if (!res.ok) return { ok: false, output: "", error: `HTTP ${res.status}` };
 		const html = await res.text();
@@ -136,7 +136,7 @@ export default function web(pi: ExtensionAPI): void {
 				try {
 					const res = await fetch(u, {
 						signal,
-						headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) WaywiserAgent/0.1" },
+						headers: { "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0" },
 						redirect: "follow",
 					});
 					if (!res.ok) {
@@ -172,7 +172,9 @@ export function htmlToText(html: string): string {
 		.replace(/&lt;/g, "<")
 		.replace(/&gt;/g, ">")
 		.replace(/&quot;/g, '"')
-		.replace(/&#39;/g, "'");
+		.replace(/&#39;/g, "'")
+		.replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+		.replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)));
 	return t
 		.split("\n")
 		.map((l) => l.replace(/[ \t]+/g, " ").trim())

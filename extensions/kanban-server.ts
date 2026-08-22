@@ -7,27 +7,12 @@
  *
  * Bound to 127.0.0.1 only — localhost is the trust boundary (same as pi itself).
  * Zero external deps: node:http only. The HTML itself lives in kanban-html.ts;
- * kanban.ts wires the generator in via setHtmlGenerator() on extension load.
+ * kanban/index.ts wires the generator in via setHtmlGenerator() on extension load.
  */
 import * as http from "node:http";
 import { randomBytes } from "node:crypto";
 import { db_ } from "./utils/state.js";
-
-// Types matching the DB schema (kept local — kanban-html.ts owns the canonical
-// BoardRow/CardRow types; these are structurally identical for the API layer).
-interface CardRow {
-	id: string; board_id: string; title: string; type: string;
-	status: string; priority: string; assignee: string | null;
-	block_reason: string | null; notes: string | null; report: string | null;
-	due: string | null; worker_child: string | null;
-	created_at: string; updated_at: string;
-}
-
-// Cards are ordered priority-first, then overdue-first, then by due date, then id.
-// CASE-based null handling (not "NULLS LAST") for portability across SQLite builds.
-const CARD_ORDER =
-	"ORDER BY CASE priority WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'med' THEN 2 WHEN 'low' THEN 3 ELSE 4 END, " +
-	"CASE WHEN due IS NULL THEN 1 ELSE 0 END, due ASC, id ASC";
+import { CARD_ORDER, nextCardId, slugify, type CardRow } from "./kanban/shared.js";
 
 // SSE clients
 const sseClients = new Set<http.ServerResponse>();
@@ -55,18 +40,7 @@ export function broadcastEvent(event: string, data: unknown): void {
 	}
 }
 
-// Generate next card ID: K1, K2, K3...
-function nextCardId(): string {
-	const row = db_().prepare("SELECT id FROM cards ORDER BY CAST(SUBSTR(id, 2) AS INTEGER) DESC LIMIT 1").get() as { id: string } | undefined;
-	const num = row ? parseInt(row.id.slice(1), 10) + 1 : 1;
-	return `K${num}`;
-}
-
-function slugify(name: string): string {
-	return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "board";
-}
-
-// The HTML is served from kanban-html.ts — kanban.ts wires the generator in on load.
+// The HTML is served from kanban-html.ts — kanban/index.ts wires the generator in on load.
 let getHtml: (() => string) | undefined;
 export function setHtmlGenerator(fn: () => string): void {
 	getHtml = fn;
