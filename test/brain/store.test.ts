@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { BrainStore } from "../extensions/brain/store.ts";
-import type { Experience, Observation } from "../extensions/brain/types.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import type { Experience, Observation } from "../../extensions/brain/types.ts";
 
 describe("store", () => {
   let store: BrainStore;
@@ -604,7 +604,7 @@ describe("store", () => {
   });
 
   it("openBrainStore builds a store from a BrainConfig", async () => {
-    const { openBrainStore } = await import("../extensions/brain/store.ts");
+    const { openBrainStore } = await import("../../extensions/brain/store.ts");
     const s = openBrainStore({ dbPath: ":memory:" } as never);
     assert.ok(s instanceof BrainStore);
     s.close();

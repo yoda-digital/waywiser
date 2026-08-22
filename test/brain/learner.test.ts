@@ -1,8 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deterministicExtract, validateCandidates, generateProcedureKey } from "../extensions/brain/learner.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
-import type { Experience, Observation, LearningResult } from "../extensions/brain/types.ts";
+import { deterministicExtract, validateCandidates, generateProcedureKey } from "../../extensions/brain/learner.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
+import type { Experience, Observation, LearningResult } from "../../extensions/brain/types.ts";
 
 function makeExperience(overrides: Partial<Experience> = {}): Experience {
   return {

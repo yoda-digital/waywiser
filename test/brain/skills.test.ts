@@ -13,10 +13,10 @@ import {
   listCandidates,
   getSkillDiscoverPaths,
   computeVersionHash,
-} from "../extensions/brain/skills.ts";
-import { BrainStore } from "../extensions/brain/store.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
-import type { BrainConfig } from "../extensions/brain/types.ts";
+} from "../../extensions/brain/skills.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
+import type { BrainConfig } from "../../extensions/brain/types.ts";
 
 describe("skills", () => {
   let tmpDir: string;

@@ -25,6 +25,7 @@ const modules = [
 	"./permissions.js",
 	"./soul.js",
 	"./memory.js",
+	"./brain/index.js", // Brain is core — loaded as a regular extension
 	"./skills-manage.js",
 	"./web.js",
 	"./mcp.js",

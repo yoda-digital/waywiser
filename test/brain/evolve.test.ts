@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { validateSkillCandidate, promotePending } from "../extensions/brain/evolve.ts";
-import { BrainStore } from "../extensions/brain/store.ts";
-import { ensureSkillDirs, writeCandidate } from "../extensions/brain/skills.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
-import type { BrainConfig } from "../extensions/brain/types.ts";
+import { validateSkillCandidate, promotePending } from "../../extensions/brain/evolve.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import { ensureSkillDirs, writeCandidate } from "../../extensions/brain/skills.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
+import type { BrainConfig } from "../../extensions/brain/types.ts";
 
 describe("evolve", () => {
   describe("validateSkillCandidate", () => {

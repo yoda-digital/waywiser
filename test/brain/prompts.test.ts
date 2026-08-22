@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { renderBrainContext } from "../extensions/brain/prompts.ts";
-import type { RecallResult } from "../extensions/brain/types.ts";
+import { renderBrainContext } from "../../extensions/brain/prompts.ts";
+import type { RecallResult } from "../../extensions/brain/types.ts";
 
 describe("prompts", () => {
   describe("renderBrainContext", () => {

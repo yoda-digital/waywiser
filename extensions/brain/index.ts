@@ -164,7 +164,7 @@ export default function brain(pi: ExtensionAPI): void {
       // This eliminates the dynamic-import hack in core memory.ts.
       // `store` is the already-open BrainStore — no new connection.
       try {
-        const { registry_ } = await import("../../../../extensions/utils/state.js");
+        const { registry_ } = await import("../utils/state.js");
         const embeddingsEnabled = config.embeddings?.enabled !== false;
 
         registry_().recallProvider = {

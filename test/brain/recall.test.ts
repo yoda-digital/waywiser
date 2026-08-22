@@ -1,8 +1,8 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { buildRecallQuery, reciprocalRankFusion, recall } from "../extensions/brain/recall.ts";
-import { BrainStore } from "../extensions/brain/store.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
+import { buildRecallQuery, reciprocalRankFusion, recall } from "../../extensions/brain/recall.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
 
 describe("recall", () => {
   describe("buildRecallQuery", () => {

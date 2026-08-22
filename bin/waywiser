@@ -55,38 +55,17 @@ for skill_dir in "$WAYWISER_PKG_DIR/skills/"pa-*/; do
 	fi
 done
 
-# ── Brain setup (core component — always loaded) ─────────────────────
-BRAIN_DIR="$WAYWISER_PKG_DIR/plugins/brain"
-BRAIN_ARGS=()
+# ── Brain setup (core component — always loaded via extensions/index.ts) ──
+# Brain directories
+mkdir -p "$WAYWISER_HOME/brain" \
+	"$WAYWISER_HOME/skills/active" \
+	"$WAYWISER_HOME/skills/candidates" \
+	"$WAYWISER_HOME/skills/retired"
 
-if [ -d "$BRAIN_DIR" ]; then
-	# Brain directories
-	mkdir -p "$WAYWISER_HOME/brain" \
-		"$WAYWISER_HOME/skills/active" \
-		"$WAYWISER_HOME/skills/candidates" \
-		"$WAYWISER_HOME/skills/retired"
-
-	# Brain config (first-run bootstrap from example)
-	if [ -d "${BRAIN_DIR}/config" ]; then
-		for example in "${BRAIN_DIR}/config/"*.example.json; do
-			[ -f "$example" ] || continue
-			target_name="$(basename "$example" .example.json).json"
-			if [ ! -f "$WAYWISER_HOME/$target_name" ]; then
-				cp "$example" "$WAYWISER_HOME/$target_name"
-				echo "waywiser: created default $target_name" >&2
-			fi
-		done
-	fi
-
-	# Brain extension
-	if [ -f "${BRAIN_DIR}/extensions/brain/index.ts" ]; then
-		BRAIN_ARGS+=(--extension "${BRAIN_DIR}/extensions/brain/index.ts")
-	fi
-
-	# Brain skill
-	if [ -f "${BRAIN_DIR}/skills/brain/SKILL.md" ]; then
-		BRAIN_ARGS+=(--skill "${BRAIN_DIR}/skills/brain/SKILL.md")
-	fi
+# Brain config (first-run bootstrap from example)
+if [ -f "$WAYWISER_PKG_DIR/config/brain.example.json" ] && [ ! -f "$WAYWISER_HOME/brain.json" ]; then
+	cp "$WAYWISER_PKG_DIR/config/brain.example.json" "$WAYWISER_HOME/brain.json"
+	echo "waywiser: created default brain.json" >&2
 fi
 
 # ── Additional plugin discovery (for future plugins, NOT Brain) ──────
@@ -97,11 +76,6 @@ if [ -d "$PLUGINS_DIR" ]; then
 	for plugin_dir in "$PLUGINS_DIR"/*/; do
 		[ -d "$plugin_dir" ] || continue
 		plugin_name="$(basename "$plugin_dir")"
-
-		# Skip Brain — already loaded above as a core component
-		if [ "$plugin_name" = "brain" ]; then
-			continue
-		fi
 
 		# First-run: copy example configs to WAYWISER_HOME
 		if [ -d "${plugin_dir}config" ]; then
@@ -138,9 +112,10 @@ if [ -d "$PLUGINS_DIR" ]; then
 fi
 
 # ── Launch ────────────────────────────────────────────────────────────
-# Load order: core extensions → Brain (core) → additional plugins → core skill
+# Load order: core extensions (Brain loads as a sibling module inside
+# extensions/index.ts) → additional plugins → core skills
 exec pi --extension "$WAYWISER_PKG_DIR/extensions/index.ts" \
-   "${BRAIN_ARGS[@]}" \
    "${PLUGIN_ARGS[@]}" \
    --skill "$WAYWISER_PKG_DIR/skills/waywiser/SKILL.md" \
+   --skill "$WAYWISER_PKG_DIR/skills/brain/SKILL.md" \
    "$@"

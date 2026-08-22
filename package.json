@@ -44,7 +44,7 @@
 	},
 	"scripts": {
 		"test": "node --test 'test/**/*.test.ts'",
-		"test:brain": "cd plugins/brain && node --test test/*.test.ts",
+		"test:brain": "node --test test/brain/*.test.ts",
 		"test:all": "npm test && npm run test:brain",
 		"test:e2e": "node --test test/e2e/*.test.ts",
 		"typecheck": "tsc --noEmit"

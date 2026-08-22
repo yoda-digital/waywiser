@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { cosineSimilarity, vecToBlob, blobToVec, embed } from "../extensions/brain/embeddings.ts";
-import { BrainStore } from "../extensions/brain/store.ts";
+import { cosineSimilarity, vecToBlob, blobToVec, embed } from "../../extensions/brain/embeddings.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
 
 describe("embeddings", () => {
   describe("cosineSimilarity", () => {

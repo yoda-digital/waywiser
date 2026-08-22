@@ -2,9 +2,9 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   inferScope, detectProjectKey, isPromotionEligible, SAFETY_BOUNDARIES,
-} from "../extensions/brain/policy.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
-import type { Procedure, EvalVerdict, BrainConfig } from "../extensions/brain/types.ts";
+} from "../../extensions/brain/policy.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
+import type { Procedure, EvalVerdict, BrainConfig } from "../../extensions/brain/types.ts";
 
 describe("policy", () => {
   describe("SAFETY_BOUNDARIES", () => {
