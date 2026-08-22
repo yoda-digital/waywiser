@@ -10,6 +10,7 @@
  * kanban.ts wires the generator in via setHtmlGenerator() on extension load.
  */
 import * as http from "node:http";
+import { randomBytes } from "node:crypto";
 import { db_ } from "./utils/state.js";
 
 // Types matching the DB schema (kept local — kanban-html.ts owns the canonical
@@ -30,6 +31,18 @@ const CARD_ORDER =
 
 // SSE clients
 const sseClients = new Set<http.ServerResponse>();
+
+// Random per-process session token — the board SPA embeds it in its own HTML
+// (served same-origin) and sends it back on every API call. This is not
+// meant to withstand a hostile local user (anyone who can read the process's
+// memory or the served HTML already has it); it exists to stop OTHER
+// processes/pages on the same machine (or malicious sites, absent the CORS
+// wildcard) from blindly hitting the API.
+const sessionToken = randomBytes(16).toString("hex");
+
+export function getBoardToken(): string {
+	return sessionToken;
+}
 
 export function broadcastEvent(event: string, data: unknown): void {
 	const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -62,10 +75,9 @@ export function setHtmlGenerator(fn: () => string): void {
 export function startBoardServer(port = 7749): Promise<{ port: number; close: () => void }> {
 	return new Promise((resolve, reject) => {
 		const server = http.createServer((req, res) => {
-			// CORS headers for all responses
-			res.setHeader("Access-Control-Allow-Origin", "*");
-			res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-			res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+			// NO CORS headers — same-origin only. The board SPA is served from
+			// this same origin; CORS is not needed and the previous wildcard let
+			// ANY page on the internet make authenticated-looking requests here.
 
 			if (req.method === "OPTIONS") {
 				res.writeHead(204);
@@ -76,15 +88,24 @@ export function startBoardServer(port = 7749): Promise<{ port: number; close: ()
 			const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
 			const reqPath = url.pathname;
 
-			// Serve the SPA
-			if (reqPath === "/" || reqPath === "/index.html") {
-				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-				res.end(getHtml ? getHtml() : "<h1>Board not ready</h1>");
-				return;
+			// ── Auth gate for /api/* endpoints ──
+			if (reqPath.startsWith("/api/")) {
+				const authHeader = req.headers.authorization ?? "";
+				if (authHeader !== `Bearer ${sessionToken}`) {
+					res.writeHead(401, { "Content-Type": "application/json" });
+					res.end(JSON.stringify({ error: "unauthorized" }));
+					return;
+				}
 			}
 
-			// SSE endpoint
+			// ── SSE endpoint: token via query param (EventSource can't set headers) ──
 			if (reqPath === "/events") {
+				const sseToken = url.searchParams.get("token");
+				if (sseToken !== sessionToken) {
+					res.writeHead(401, { "Content-Type": "text/plain" });
+					res.end("unauthorized");
+					return;
+				}
 				res.writeHead(200, {
 					"Content-Type": "text/event-stream",
 					"Cache-Control": "no-cache",
@@ -96,7 +117,14 @@ export function startBoardServer(port = 7749): Promise<{ port: number; close: ()
 				return;
 			}
 
-			// REST API: parse JSON body for POST/PUT
+			// ── Serve the SPA (public — token is embedded in the HTML) ──
+			if (reqPath === "/" || reqPath === "/index.html") {
+				res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+				res.end(getHtml ? getHtml() : `<h1>Board not ready</h1><script>window.__WAYWISER_TOKEN="${sessionToken}"</script>`);
+				return;
+			}
+
+			// ── REST API: parse JSON body for POST/PUT ──
 			if (req.method === "POST" || req.method === "PUT") {
 				let body = "";
 				req.on("data", (chunk: Buffer) => {
