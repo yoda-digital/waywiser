@@ -102,11 +102,27 @@ export default function skillsManage(pi: ExtensionAPI): void {
 			.map((s) => `  ${tierBadge(s)} ${s.name}: ${s.description}`)
 			.join("\n");
 
+		// Auto-trigger onboarding on first-ever session
+		if (!onboarded) {
+			try {
+				const memCount = (db_().prepare("SELECT COUNT(*) AS c FROM memories").get() as { c: number }).c;
+				if (memCount === 0) {
+					// First-ever session: no memories at all → auto-trigger onboarding
+					// The agent will greet the user and walk through setup
+					try {
+						pi.sendUserMessage(
+							"[system] This is your first session. Load skill_view name=\"pa-onboard\" and run the complete setup wizard to configure Waywiser as your personal assistant. Greet the user warmly and walk them through each step.",
+							{ deliverAs: "followUp" },
+						);
+					} catch { /* agent not ready yet — the note below will cover it */ }
+				}
+			} catch { /* db not ready */ }
+		}
+
 		const onboardNote = onboarded
 			? ""
-			: `\n⚠ PA system not yet onboarded. On the FIRST personal assistant request,\n`
-				+ `load \`skill_view\` name="pa-onboard" and run the setup wizard before\n`
-				+ `proceeding with the domain playbook. This sets up daily/weekly review crons,\n`
+			: `\n⚠ PA system not yet onboarded. Run the setup wizard (automatic on first session,\n`
+				+ `or invoke \`skill_view\` name="pa-onboard" manually). Sets up daily/weekly reviews,\n`
 				+ `captures preferences, and creates the PA kanban board.\n`;
 
 		registerInjection({
