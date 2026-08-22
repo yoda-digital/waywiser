@@ -15,8 +15,10 @@ extensions. Nothing patches pi's core.
 ```
 waywiser/
 ├── extensions/              ← Core agent (memory, delegation, kanban, etc.)
-├── skills/                  ← Core skills
-├── bin/waywiser             ← Launcher (auto-discovers plugins)
+├── skills/
+│   ├── waywiser/            ← Core operating skill (always loaded)
+│   └── pa-*/                ← 18 PA domain skills (bootstrapped to ~/.waywiser/skills/)
+├── bin/waywiser             ← Launcher (auto-discovers plugins, bootstraps PA skills)
 ├── config/                  ← Default configs
 │
 └── plugins/                 ← Vendor plugins (auto-loaded by launcher)
@@ -146,6 +148,69 @@ Then enable "Waywiser Brain" in Obsidian Settings → Community Plugins.
 | Real-time DB refresh | — | — | ✅ |
 | Graph view coloring | — | — | ✅ |
 | Confidence bars | — | — | ✅ |
+| PA skills (18 domains) | ✅ | ✅ | ✅ |
+
+## PA Skills (Personal Assistant)
+
+18 domain-specific skills that transform Waywiser from a coding agent into a
+full personal assistant. Each skill embeds a professional methodology (GTD,
+Minto Pyramid, OODA Loop, DMAIC, etc.), few-shot examples for Qwen 3 8B
+accuracy, and tool integration with Waywiser's native toolset.
+
+Skills are installed to `~/.waywiser/skills/` on first run and discovered via
+`skills_list`. They load on-demand via `skill_view` (progressive disclosure —
+only descriptions live in context until activated).
+
+### First-run setup
+
+On launch, the PA system auto-detects whether onboarding has been completed. If
+not, the first PA request triggers the `pa-onboard` setup wizard which:
+
+1. Captures working hours, timezone, and quiet hours
+2. Creates a daily planning review cron (default 08:00 Mon–Fri)
+3. Creates a weekly review cron (default Friday 16:00)
+4. Identifies the calendar source (Google Calendar MCP, file, or manual)
+5. Records communication preferences and recurring commitments
+6. Creates a `pa-overview` kanban board
+7. Writes an onboarding marker to memory (won't repeat)
+
+A lightweight PA skill catalog (~2KB) is injected into the system prompt at
+every session start so the model knows which skill to activate for each request.
+
+### Tiers
+
+| Tier | Skills | Use case |
+|------|--------|----------|
+| **1 — Core daily** | `pa-time-manage` `pa-doc-writer` `pa-stakeholder-comm` `pa-research` | Scheduling, writing, communication, research |
+| **2 — Weekly ops** | `pa-project-coord` `pa-event-manage` `pa-finance` `pa-lifestyle` | Projects, events, budgets, concierge |
+| **3 — Specialized** | `pa-travel` `pa-procurement` `pa-decision-support` `pa-process-improve` | Travel, vendors, decisions, optimization |
+| **4 — On-demand** | `pa-tech-ops` `pa-records` `pa-hr-support` `pa-compliance` `pa-governance` `pa-protocol` | IT, records, HR, compliance, governance, etiquette |
+
+### Clusters
+
+```
+A. Communication & Writing    → pa-stakeholder-comm, pa-doc-writer, pa-protocol
+B. Time, Tasks & Projects     → pa-time-manage, pa-project-coord, pa-event-manage
+C. Information & Knowledge    → pa-tech-ops, pa-records, pa-research
+D. Operations & Admin         → pa-finance, pa-travel, pa-hr-support,
+                                 pa-process-improve, pa-procurement
+E. Governance & Strategy      → pa-compliance, pa-governance, pa-decision-support
+F. Lifestyle Management       → pa-lifestyle
+```
+
+### Each skill contains
+
+- **Role prompt** — domain-specific persona
+- **Methodology** — professional framework (BoT reasoning template)
+- **Few-shot examples** — 2 per skill for 8B model accuracy (15% → 66%)
+- **Tool integration** — mapped to Waywiser tools (memory, kanban, delegate_task, etc.)
+- **Memory-first protocol** — recall preferences before every task
+- **Thinking level** — calibrated per domain complexity (low → max)
+- **Guardrails** — domain-specific safety boundaries and escalation rules
+
+Six cross-cutting meta-skills (Emotional Intelligence, Discretion, Anticipatory
+Thinking, Adaptability, Multi-tasking, Continuous Learning) are embedded in
+SOUL.md and apply across all domains.
 
 ## Plugin System
 
