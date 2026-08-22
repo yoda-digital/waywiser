@@ -257,6 +257,14 @@ export function writeJSON(file: string, data: unknown): void {
 	fs.renameSync(tmp, file);
 }
 
+/** Per-session tool-call and subagent-spawn budget. Reset at session_start. */
+export interface SessionBudget {
+	maxToolCalls: number;
+	maxSubagentSpawns: number;
+	toolCallCount: number;
+	subagentSpawnCount: number;
+}
+
 /** Cross-extension registry (in-process only). */
 export interface WaywiserRegistry {
 	subagents: Map<string, unknown>;
@@ -264,6 +272,7 @@ export interface WaywiserRegistry {
 	cron: { onSchedule?: (dueAt: number, id: string, run: (id: string) => void) => void };
 	log: (kind: string, text: string) => void;
 	bumpKanban?: () => void;
+	budget: SessionBudget;
 }
 
 const registry: WaywiserRegistry = {
@@ -276,6 +285,12 @@ const registry: WaywiserRegistry = {
 		} catch {
 			/* DB unavailable; journey logging is best-effort */
 		}
+	},
+	budget: {
+		maxToolCalls: Number(process.env.WAYWISER_MAX_TOOL_CALLS) || 200,
+		maxSubagentSpawns: Number(process.env.WAYWISER_MAX_SPAWNS) || 10,
+		toolCallCount: 0,
+		subagentSpawnCount: 0,
 	},
 };
 

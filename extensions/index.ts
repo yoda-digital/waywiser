@@ -12,9 +12,11 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-// Load order: identity first (stable system-prompt prefix), memory second,
-// then capabilities, then user-facing commands last.
+// Load order: permissions first (gates all tool calls), then identity
+// (stable system-prompt prefix), memory second, then capabilities, then
+// user-facing commands last.
 const modules = [
+	"./permissions.js",
 	"./soul.js",
 	"./memory.js",
 	"./skills-manage.js",
