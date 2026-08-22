@@ -28,8 +28,9 @@ import {
 	type GateCandidate,
 	type MemSource,
 	confForSource,
-	extractText,
 	lastUserEntry, // pure helper defined in memrules.ts (Test 6 imports it from there; hook reaches it via this namespace import)
+	jaccard,
+	DUPLICATE_JACCARD,
 } from "./memrules.js";
 
 export type MemActionResult = { text: string; isErr?: boolean };
@@ -114,7 +115,7 @@ export async function memAction(db: ReturnType<typeof db_>, action: string, p: R
 			const s = db.prepare("SELECT source, COUNT(*) AS c FROM memories GROUP BY source").all() as Array<{ source: string; c: number }>;
 			const total = (db.prepare("SELECT COUNT(*) AS c FROM memories").get() as { c: number }).c;
 			const readable = db.prepare(`SELECT COUNT(*) AS c FROM memories m WHERE ${READ_POOL_PREDICATE}`).get() as { c: number };
-			const writes = (db.prepare("SELECT COUNT(*) AS c FROM memlog WHERE kind IN ('remember','gate')").get() as { c: number }).c;
+			const writes = (db.prepare("SELECT COUNT(*) AS c FROM memlog WHERE kind IN ('remember','gate','gate-deterministic')").get() as { c: number }).c;
 			const injects = (db.prepare("SELECT COUNT(*) AS c FROM memlog WHERE kind = 'inject'").get() as { c: number }).c;
 			const md = fs.existsSync(homeFile("USER.md")) ? fs.readFileSync(homeFile("USER.md"), "utf-8").trim().split("\n").length : 0;
 			return {
@@ -221,6 +222,26 @@ export function parseMemCommandLine(args: string):
 	return { query: a };
 }
 
+/**
+ * Deterministic memory signals (spec §0.6 — replaces the per-turn LLM gate).
+ * Matched against the user's message only, CPU-only, ~1ms. Brain's
+ * reflectiveExtract (LLM-powered) still runs at agent_settled and catches the
+ * nuanced signals these patterns miss.
+ */
+export const GATE_PATTERNS: Array<{ pattern: RegExp; type: "preference" | "fact" | "decision" | "lesson" }> = [
+	// Explicit preferences
+	{ pattern: /\b(?:always|never)\s+(?:use|do|make|write|prefer)\b/i, type: "preference" },
+	{ pattern: /\b(?:I prefer|I like|I want|I need)\s+\w/i, type: "preference" },
+	{ pattern: /\b(?:from now on|going forward)\b/i, type: "preference" },
+	{ pattern: /\b(?:don'?t|do not|stop)\s+(?:use|do|make|write|add)\b/i, type: "preference" },
+	// Explicit remember requests
+	{ pattern: /\bremember\s+(?:that|this|my|the)\b/i, type: "fact" },
+	// Decisions
+	{ pattern: /\b(?:let'?s go with|we'?ll use|decided to|decision is)\b/i, type: "decision" },
+	// Lessons (from corrections)
+	{ pattern: /\b(?:that'?s wrong|no,?\s+(?:use|it'?s|the)|actually,?\s+(?:use|it'?s))\b/i, type: "lesson" },
+];
+
 export default function memory(pi: ExtensionAPI): void {
 	registerMemory(pi);
 }
@@ -326,7 +347,7 @@ export function registerMemory(pi: ExtensionAPI): void {
 
 	let gateAccum: string[] = [];
 	let recallState = initialRecallState;
-	pi.on("turn_end", async (event, ctx) => {
+	pi.on("turn_end", async (_event, ctx) => {
 		try {
 			const s = memSettings();
 			// recall counts USER turns even when the gate is off/muted (Task 7)
@@ -334,14 +355,25 @@ export function registerMemory(pi: ExtensionAPI): void {
 			if (userEntry) recallState = { ...recallState, userTurns: recallState.userTurns + 1 };  // single increment per user turn (Task-6 line, kept verbatim);
 			if (!s.auto || !userEntry) return;
 			const session = String((ctx.sessionManager as { getSessionFile?: () => string | undefined }).getSessionFile?.() ?? "gate");
-			const assistantText = extractText((event as { message?: { content?: unknown } }).message?.content);
-			const existing = recentMemories(db_(), 50);
-			const r = await runGate({ userText: userEntry.text, assistantText, db: db_(), existing, session });
-			if (r.error) return; // silent skip: nothing useful happened (spec §4)
-			if (r.accepted) {
-				const added = recentMemories(db_(), r.accepted).slice(0, r.accepted).map((m) => m.content);
+			const db = db_();
+			const existing = recentMemories(db, 50);
+			const userText = userEntry.text;
+
+			// Deterministic extraction (spec §0.6) — CPU-only regex pass replaces the
+			// per-turn LLM gate (was 3-8s GPU inference on every turn). Brain's
+			// reflectiveExtract still runs the LLM pass at agent_settled boundaries.
+			for (const { pattern, type } of GATE_PATTERNS) {
+				if (!pattern.test(userText)) continue;
+				const content = userText.replace(/\s+/g, " ").trim().slice(0, 500);
+				const dup = existing.find((e) => jaccard(e.content, content) >= DUPLICATE_JACCARD);
+				if (dup) break; // already remembered something similar — silent skip
+				rememberRow(db, { type, content, confidence: 0.6, source: "agent", sourceSession: session });
+				try { fs.appendFileSync(homeFile("MEMORY.md"), `- [${type}] ${content}\n`); } catch { /* best effort */ }
+				logMem("gate-deterministic", `${type}: ${content.slice(0, 80)}`);
+				const added = recentMemories(db, 1).map((m) => m.content);
 				gateAccum = [...gateAccum, ...added];
-				if (gateAccum.length >= 5) { gateEpisode(db_(), gateAccum.slice(0, 5)); gateAccum = gateAccum.slice(5); }
+				if (gateAccum.length >= 5) { gateEpisode(db, gateAccum.slice(0, 5)); gateAccum = gateAccum.slice(5); }
+				break; // one extraction per turn (gate's MAX 2, simplified to 1)
 			}
 		} catch {
 			/* gate must never break the session — same posture as the digest */
