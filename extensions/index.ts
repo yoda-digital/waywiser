@@ -37,6 +37,7 @@ const modules = [
 	"./todo-compat.js",
 	"./commands.js",
 	"./proactive.js",
+	"./meta-skills.js",
 ];
 
 export default async function (pi: ExtensionAPI) {
