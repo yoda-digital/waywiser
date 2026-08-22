@@ -7,6 +7,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn } from "node:child_process";
+import { checkUrl } from "./utils/url-guard.js";
 
 function runVsearch(
 	args: string[],
@@ -126,6 +127,12 @@ export default function web(pi: ExtensionAPI): void {
 			const maxChars = p.maxChars ?? 20_000;
 			const parts: string[] = [];
 			for (const u of p.urls.slice(0, 5)) {
+				// SSRF guard: block private/internal URLs
+				const urlCheck = checkUrl(u);
+				if (!urlCheck.allowed) {
+					parts.push(`### ${u}\n[blocked: ${urlCheck.reason}]`);
+					continue;
+				}
 				try {
 					const res = await fetch(u, {
 						signal,
