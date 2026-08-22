@@ -5,23 +5,23 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 // Import every module to verify they all load
-import { DEFAULT_BRAIN_CONFIG, loadBrainConfig, BRAIN_VERSION, brainConfig, reloadBrainConfig, brainHome, brainSkillsRoot } from "../extensions/brain/config.ts";
-import { BrainStore, openBrainStore } from "../extensions/brain/store.ts";
-import { classifyToolProvenance, classifyEventProvenance, confidenceForSource, isCallFromUser } from "../extensions/brain/provenance.ts";
-import { ExperienceTrace } from "../extensions/brain/trace.ts";
-import { extractTargetKey, normalizePath, linkRecoveries } from "../extensions/brain/recovery.ts";
-import { recall, buildRecallQuery, reciprocalRankFusion } from "../extensions/brain/recall.ts";
-import { deterministicExtract, reflectiveExtract, validateCandidates, recordMemoryUsage } from "../extensions/brain/learner.ts";
-import { updateProcedureEvidence, updateProcedureConfidence, deriveProcedureStatus, checkMaturity } from "../extensions/brain/procedures.ts";
-import { consolidate, deterministicCleanup, findNearDuplicateClusters } from "../extensions/brain/consolidate.ts";
-import { ensureSkillDirs, writeCandidate, promoteCandidate, rejectCandidate, rollbackSkill, listActiveSkills, listCandidates, getSkillDiscoverPaths, computeVersionHash } from "../extensions/brain/skills.ts";
-import { generateEvalCases, computeHardChecks, scoreEvalPair } from "../extensions/brain/eval.ts";
-import { validateSkillCandidate, promotePending } from "../extensions/brain/evolve.ts";
-import { renderMemoryMarkdown, renderProcedureMarkdown, parseMemoryMarkdown, parseProcedureMarkdown, contentHash, memorySlug, procedureSlug, vaultSyncOutbound, vaultSyncInbound } from "../extensions/brain/vault.ts";
-import { inferScope, detectProjectKey, isPromotionEligible, SAFETY_BOUNDARIES } from "../extensions/brain/policy.ts";
-import { gatePrompt, consolidatePrompt, contradictionPrompt, compileSkillPrompt, judgePrompt, recoverySuggestionPrompt, renderBrainContext } from "../extensions/brain/prompts.ts";
-import { createCognitionPool } from "../extensions/brain/cognition.ts";
-import type { Experience, Observation, BrainMemory, Procedure, BrainConfig, RecallResult } from "../extensions/brain/types.ts";
+import { DEFAULT_BRAIN_CONFIG, loadBrainConfig, BRAIN_VERSION, brainConfig, reloadBrainConfig, brainHome, brainSkillsRoot } from "../../extensions/brain/config.ts";
+import { BrainStore, openBrainStore } from "../../extensions/brain/store.ts";
+import { classifyToolProvenance, classifyEventProvenance, confidenceForSource, isCallFromUser } from "../../extensions/brain/provenance.ts";
+import { ExperienceTrace } from "../../extensions/brain/trace.ts";
+import { extractTargetKey, normalizePath, linkRecoveries } from "../../extensions/brain/recovery.ts";
+import { recall, buildRecallQuery, reciprocalRankFusion } from "../../extensions/brain/recall.ts";
+import { deterministicExtract, reflectiveExtract, validateCandidates, recordMemoryUsage } from "../../extensions/brain/learner.ts";
+import { updateProcedureEvidence, updateProcedureConfidence, deriveProcedureStatus, checkMaturity } from "../../extensions/brain/procedures.ts";
+import { consolidate, deterministicCleanup, findNearDuplicateClusters } from "../../extensions/brain/consolidate.ts";
+import { ensureSkillDirs, writeCandidate, promoteCandidate, rejectCandidate, rollbackSkill, listActiveSkills, listCandidates, getSkillDiscoverPaths, computeVersionHash } from "../../extensions/brain/skills.ts";
+import { generateEvalCases, computeHardChecks, scoreEvalPair } from "../../extensions/brain/eval.ts";
+import { validateSkillCandidate, promotePending } from "../../extensions/brain/evolve.ts";
+import { renderMemoryMarkdown, renderProcedureMarkdown, parseMemoryMarkdown, parseProcedureMarkdown, contentHash, memorySlug, procedureSlug, vaultSyncOutbound, vaultSyncInbound } from "../../extensions/brain/vault.ts";
+import { inferScope, detectProjectKey, isPromotionEligible, SAFETY_BOUNDARIES } from "../../extensions/brain/policy.ts";
+import { gatePrompt, consolidatePrompt, contradictionPrompt, compileSkillPrompt, judgePrompt, recoverySuggestionPrompt, renderBrainContext } from "../../extensions/brain/prompts.ts";
+import { createCognitionPool } from "../../extensions/brain/cognition.ts";
+import type { Experience, Observation, BrainMemory, Procedure, BrainConfig, RecallResult } from "../../extensions/brain/types.ts";
 
 describe("smoke", () => {
   it("all modules load without error", () => {

@@ -26,6 +26,26 @@ waywiser/
 │   ├── mem-dream.ts                 ← Memory consolidation (dedup, merge, conflicts)
 │   ├── proactive.ts                 ← Proactive cognition engine (OODA loop, signal gathering)
 │   ├── meta-skills.ts               ← Behavioral engines (EQ, discretion, adaptability, multi-tasking)
+│   ├── brain/                       ← Persistent memory with procedural preferences (core — always loaded)
+│   │   ├── index.ts                 ← Brain lifecycle (session, learning boundary, vault sync)
+│   │   ├── store.ts                 ← BrainStore (SQLite, migrations, CRUD)
+│   │   ├── recall.ts                ← Reciprocal rank fusion (lexical + scope + usage + confidence + recency + semantic)
+│   │   ├── embeddings.ts            ← Embedding API (CPU-isolated, LRU cache, batch /api/embed)
+│   │   ├── learner.ts               ← Two-pass learning (deterministic + LLM reflection)
+│   │   ├── procedures.ts            ← Procedural preferences with evidence tracking
+│   │   ├── evolve.ts                ← Auto-evolution pipeline (procedures → candidates → skills)
+│   │   ├── cognition.ts             ← Cognition pool (pi RPC children for reflection)
+│   │   ├── consolidate.ts           ← Dedup, merge, contradiction detection
+│   │   ├── vault.ts                 ← Obsidian-native markdown sync (wikilinks, Properties, MOCs)
+│   │   ├── trace.ts                 ← Experience trace (observations, outcomes)
+│   │   ├── prompts.ts               ← Brain context rendering
+│   │   ├── config.ts                ← Brain config loader
+│   │   ├── policy.ts                ← Project-key detection, scoping
+│   │   ├── eval.ts                  ← Competitive skill evaluation
+│   │   ├── provenance.ts            ← Memory provenance tracking
+│   │   ├── recovery.ts              ← Crash recovery
+│   │   ├── skills.ts                ← Skill discovery, promotion, rollback
+│   │   └── types.ts                 ← Brain type definitions
 │   ├── kanban/                      ← Project boards (4 modules)
 │   │   ├── index.ts                 ← Extension wiring, /kanban command, kanban tool
 │   │   ├── ops.ts                   ← 25+ board/card CRUD operations
@@ -53,39 +73,16 @@ waywiser/
 │       └── url-guard.ts             ← SSRF protection (RFC1918, link-local, loopback, IPv6)
 │
 ├── plugins/
-│   └── brain/                       ← Persistent memory with procedural preferences (core — always loaded)
-│       ├── extensions/brain/        ← 19 modules:
-│       │   ├── index.ts             ← Brain lifecycle (session, learning boundary, vault sync)
-│       │   ├── store.ts             ← BrainStore (SQLite, migrations, CRUD)
-│       │   ├── recall.ts            ← Reciprocal rank fusion (lexical + scope + usage + confidence + recency + semantic)
-│       │   ├── embeddings.ts        ← Embedding API (CPU-isolated, LRU cache, batch /api/embed)
-│       │   ├── learner.ts           ← Two-pass learning (deterministic + LLM reflection)
-│       │   ├── procedures.ts        ← Procedural preferences with evidence tracking
-│       │   ├── evolve.ts            ← Auto-evolution pipeline (procedures → candidates → skills)
-│       │   ├── cognition.ts         ← Cognition pool (pi RPC children for reflection)
-│       │   ├── consolidate.ts       ← Dedup, merge, contradiction detection
-│       │   ├── vault.ts             ← Obsidian-native markdown sync (wikilinks, Properties, MOCs)
-│       │   ├── trace.ts             ← Experience trace (observations, outcomes)
-│       │   ├── prompts.ts           ← Brain context rendering
-│       │   ├── config.ts            ← Brain config loader
-│       │   ├── policy.ts            ← Project-key detection, scoping
-│       │   ├── eval.ts              ← Competitive skill evaluation
-│       │   ├── provenance.ts        ← Memory provenance tracking
-│       │   ├── recovery.ts          ← Crash recovery
-│       │   ├── skills.ts            ← Skill discovery, promotion, rollback
-│       │   └── types.ts             ← Brain type definitions
-│       ├── skills/brain/SKILL.md    ← Brain operating skill
-│       ├── config/brain.example.json
-│       ├── test/                    ← 18 test files, 332 tests
-│       └── plugins/obsidian/        ← Obsidian integration (optional add-on)
-│           ├── src/                 ← Plugin source (dashboard, commands, graph, watcher)
-│           ├── main.js              ← Built plugin
-│           ├── manifest.json
-│           ├── styles.css
-│           └── sql-wasm.wasm
+│   └── obsidian/                    ← Obsidian integration (optional add-on)
+│       ├── src/                     ← Plugin source (dashboard, commands, graph, watcher)
+│       ├── main.js                  ← Built plugin
+│       ├── manifest.json
+│       ├── styles.css
+│       └── sql-wasm.wasm
 │
 ├── skills/
 │   ├── waywiser/SKILL.md            ← Core operating skill (always loaded)
+│   ├── brain/SKILL.md               ← Brain operating skill (always loaded)
 │   └── pa-*/SKILL.md               ← 19 PA playbooks (bootstrapped to ~/.waywiser/skills/)
 │       ├── pa-time-manage/          ✅ verified
 │       ├── pa-doc-writer/           ✅ verified
@@ -108,19 +105,21 @@ waywiser/
 │       └── pa-protocol/             🔬 untested
 │
 ├── bin/
-│   ├── waywiser                     ← Launcher (Brain hardcoded as core, plugin discovery for extras)
+│   ├── waywiser                     ← Launcher (core extensions, plugin discovery for extras)
 │   └── hermes                       ← Legacy alias (backward compat)
 │
 ├── config/
 │   ├── SOUL.md                      ← Default identity template
 │   ├── mcp.example.json             ← MCP server config example
-│   └── notify.example.json          ← Notification channel config example
+│   ├── notify.example.json          ← Notification channel config example
+│   └── brain.example.json           ← Brain config example (recall, embeddings, vault, evolution)
 │
 ├── test/
 │   ├── waywiser.test.ts             ← Core unit tests (memory, gate, recall, goals, traces, meta-skills)
 │   ├── smoke.test.ts                ← Extension registration smoke test
 │   ├── permissions.test.ts          ← Permission engine tests (classifier, policy, budget, planning)
 │   ├── prompt-budget.test.ts        ← Prompt budget manager tests (ordering, trimming, cache)
+│   ├── brain/                       ← Brain unit tests (18 files, 332 tests)
 │   ├── security/
 │   │   ├── execute-code-sandbox.test.ts  ← vm.createContext sandbox escape prevention
 │   │   ├── url-guard.test.ts             ← SSRF URL blocking
@@ -211,7 +210,7 @@ The Brain vault at `~/.waywiser/brain/` is already Obsidian-compatible
 dashboard sidebar, command palette, graph coloring, confidence bars:
 
 ```bash
-cd plugins/brain/plugins/obsidian
+cd plugins/obsidian
 npm install && npm run build
 cp main.js manifest.json styles.css sql-wasm.wasm \
    /path/to/vault/.obsidian/plugins/waywiser-brain/
@@ -321,14 +320,12 @@ All config lives in `~/.waywiser/`:
 ## Tests
 
 ```bash
-# Core + security + proactive + meta-skills (9 suites)
-npm test                                            # 196 tests (190 pass, 6 e2e skip)
+# Everything — core + security + proactive + meta-skills + Brain (85 suites)
+# test/brain/ is discovered by this recursive glob, Brain is no longer separate
+npm test                                            # 528 tests (522 pass, 6 e2e skip)
 
-# Brain plugin (18 suites)
+# Brain only (76 suites, subset of the above)
 npm run test:brain                                  # 332 tests
-
-# Everything
-npm run test:all                                    # 528 total
 
 # End-to-end evals (requires a running LLM)
 WAYWISER_E2E_MODEL=qwen3:latest npm run test:e2e    # 6 tests

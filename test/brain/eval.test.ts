@@ -5,9 +5,9 @@ import {
   computeHardChecks,
   scoreEvalPair,
   type EvalRunResult,
-} from "../extensions/brain/eval.ts";
-import { BrainStore } from "../extensions/brain/store.ts";
-import type { EvalCase, Procedure } from "../extensions/brain/types.ts";
+} from "../../extensions/brain/eval.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import type { EvalCase, Procedure } from "../../extensions/brain/types.ts";
 
 describe("eval", () => {
   let store: BrainStore;

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { extractTargetKey, normalizePath, linkRecoveries } from "../extensions/brain/recovery.ts";
-import type { Observation } from "../extensions/brain/types.ts";
+import { extractTargetKey, normalizePath, linkRecoveries } from "../../extensions/brain/recovery.ts";
+import type { Observation } from "../../extensions/brain/types.ts";
 
 describe("recovery", () => {
   describe("normalizePath", () => {

@@ -12,7 +12,7 @@ import {
   brainHome,
   brainSkillsRoot,
   brainDbPath,
-} from "../extensions/brain/config.ts";
+} from "../../extensions/brain/config.ts";
 
 const NONEXISTENT_CONFIG_PATH = "/tmp/waywiser-brain-test-does-not-exist-12345.json";
 

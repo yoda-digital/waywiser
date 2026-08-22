@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ExperienceTrace } from "../extensions/brain/trace.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
+import { ExperienceTrace } from "../../extensions/brain/trace.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
 
 describe("ExperienceTrace", () => {
   function makeTrace() {

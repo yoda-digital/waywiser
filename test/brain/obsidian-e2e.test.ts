@@ -19,8 +19,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { BrainStore } from "../extensions/brain/store.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
 import {
   renderMemoryMarkdown,
   renderProcedureMarkdown,
@@ -32,9 +32,9 @@ import {
   generateSemanticMOC,
   generateProceduresMOC,
   generateBrainCanvas,
-} from "../extensions/brain/vault.ts";
-import type { BrainMemory, Procedure, BrainConfig } from "../extensions/brain/types.ts";
-import type { RenderContext } from "../extensions/brain/vault.ts";
+} from "../../extensions/brain/vault.ts";
+import type { BrainMemory, Procedure, BrainConfig } from "../../extensions/brain/types.ts";
+import type { RenderContext } from "../../extensions/brain/vault.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -541,7 +541,7 @@ describe("Obsidian E2E", () => {
   // Tier 2: Obsidian plugin build artifacts
   // -------------------------------------------------------------------
   describe("Tier 2: Obsidian plugin build artifacts", () => {
-    const pluginRoot = path.resolve(import.meta.dirname, "../plugins/obsidian");
+    const pluginRoot = path.resolve(import.meta.dirname, "../../plugins/obsidian");
 
     it("has a built main.js bundle", () => {
       const mainJs = path.join(pluginRoot, "main.js");

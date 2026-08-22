@@ -5,8 +5,8 @@ import {
   classifyEventProvenance,
   confidenceForSource,
   isCallFromUser,
-} from "../extensions/brain/provenance.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
+} from "../../extensions/brain/provenance.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
 
 describe("provenance", () => {
   describe("classifyToolProvenance", () => {

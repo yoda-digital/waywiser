@@ -1,8 +1,8 @@
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { deterministicCleanup, findNearDuplicateClusters, consolidate } from "../extensions/brain/consolidate.ts";
-import { BrainStore } from "../extensions/brain/store.ts";
-import { DEFAULT_BRAIN_CONFIG } from "../extensions/brain/config.ts";
+import { deterministicCleanup, findNearDuplicateClusters, consolidate } from "../../extensions/brain/consolidate.ts";
+import { BrainStore } from "../../extensions/brain/store.ts";
+import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
 
 describe("consolidate", () => {
   let store: BrainStore;
