@@ -14,7 +14,10 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { createContext, Script } from "node:vm";
+import * as path from "node:path";
 import { createPiRpcClient, createPiRpcPool, type PiRpcClient } from "./utils/rpc.js";
+import { waywiserHome, readJSON } from "./utils/state.js";
 
 // Small warm pool for the execute_code lane (fresh per cwd; heavy
 // new_session reset on reuse keeps the contract of "isolated agent").
@@ -25,6 +28,98 @@ const execPool = createPiRpcPool({
 	spawn: (lane, cwd) => createPiRpcClient({ cwd, args: EXECUTE_CODE_ARGS }),
 });
 if (typeof process.on === "function") process.on("exit", () => execPool.shutdownAll());
+
+/**
+ * Parse the model's JavaScript snippet to extract the toolCalls array.
+ * Runs in a completely empty V8 context (no process, no require, no
+ * globalThis, no constructor chain). 5s timeout prevents infinite loops.
+ * Result is deep-cloned via JSON round-trip to sever all sandbox refs.
+ */
+export function parseToolCalls(code: string): Array<{ tool: string; args: Record<string, unknown> }> {
+	const sandbox = createContext(Object.create(null));
+	const script = new Script(
+		`"use strict";\n${code}\ntoolCalls;`,
+		{ filename: "execute_code_user_script.js" },
+	);
+	const raw = script.runInContext(sandbox, { timeout: 5_000 });
+	if (!Array.isArray(raw) || raw.length === 0) {
+		throw new Error("script must assign a non-empty `toolCalls` array");
+	}
+	const cloned: unknown = JSON.parse(JSON.stringify(raw));
+	const calls = cloned as Array<Record<string, unknown>>;
+	for (let i = 0; i < calls.length; i++) {
+		const c = calls[i];
+		if (typeof c.tool !== "string" || !c.tool) {
+			throw new Error(`toolCalls[${i}].tool must be a non-empty string`);
+		}
+		if (typeof c.args !== "object" || c.args === null || Array.isArray(c.args)) {
+			throw new Error(`toolCalls[${i}].args must be a plain object`);
+		}
+	}
+	return calls as Array<{ tool: string; args: Record<string, unknown> }>;
+}
+
+interface ExecuteCodeConfig {
+	backend: "host" | "gondolin";
+	gondolinTimeout: number;
+	gondolinAllowedHosts: string[];
+}
+
+function getExecuteCodeConfig(): ExecuteCodeConfig {
+	const file = path.join(waywiserHome(), "config.json");
+	const full = readJSON<Record<string, unknown>>(file, {});
+	const raw = (full.executeCode ?? {}) as Partial<ExecuteCodeConfig>;
+	return {
+		backend: raw.backend === "gondolin" ? "gondolin" : "host",
+		gondolinTimeout: typeof raw.gondolinTimeout === "number" ? raw.gondolinTimeout : 180_000,
+		gondolinAllowedHosts: Array.isArray(raw.gondolinAllowedHosts) ? raw.gondolinAllowedHosts : [],
+	};
+}
+
+async function executeInGondolin(
+	toolCalls: Array<{ tool: string; args: Record<string, unknown> }>,
+	cwd: string,
+	timeout: number,
+): Promise<string> {
+	const { VM, createHttpHooks } = await import("@earendil-works/gondolin");
+	const config = getExecuteCodeConfig();
+	const { httpHooks, env } = createHttpHooks({
+		allowedHosts: config.gondolinAllowedHosts,
+		blockInternalRanges: true,
+		secrets: {},
+	});
+	const vm = await VM.create({ httpHooks, env });
+	try {
+		const callList = toolCalls
+			.map((c, i) => `${i + 1}. ${c.tool}(${JSON.stringify(c.args).slice(0, 2000)})`)
+			.join("\n");
+		const prompt = [
+			"Execute EXACTLY these tool calls, in order, with exactly these arguments.",
+			"No commentary between calls. Execute every numbered call yourself.",
+			"When all finish, reply: one line per call, prefixed with its number, marked ok or FAILED(reason).",
+			"Then a final line starting with 'SUMMARY: '.",
+			"",
+			"Tool calls:",
+			callList,
+		].join("\n");
+		const result = await vm.exec(
+			["pi", "-p", prompt, "--no-session", "--no-extensions",
+				"--no-context-files", "--no-skills", "--no-prompt-templates", "--no-themes"],
+			{ signal: AbortSignal.timeout(timeout) },
+		);
+		if (!result.ok) {
+			return `execute_code (gondolin): pi exited ${result.exitCode}\nstderr: ${result.stderr.slice(0, 500)}`;
+		}
+		const text = result.stdout.trim() || "(no output)";
+		const numbered = text.split(/\n/).filter((l: string) => /^\s*\d+\./.test(l)).length;
+		const warned = numbered !== toolCalls.length
+			? `WARNING: expected ${toolCalls.length} numbered result lines, child reported ${numbered}.\n\n`
+			: "";
+		return `${warned}executed ${toolCalls.length} call(s) in gondolin VM.\n\n${text}`;
+	} finally {
+		await vm.close();
+	}
+}
 
 export default function executeCode(pi: ExtensionAPI): void {
 	pi.registerTool({
@@ -41,27 +136,48 @@ export default function executeCode(pi: ExtensionAPI): void {
 		}),
 		executionMode: "sequential",
 		async execute(_id, p, signal, _update, ctx: ExtensionContext) {
-			// 1. Parse the script's toolCalls without a shell: extract with a tiny repl.
+			// 1. Parse phase: extract toolCalls from user script (vm-sandboxed)
 			let toolCalls: Array<{ tool: string; args: Record<string, unknown> }>;
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-implied-eval
-				const fn = new Function(`
-					const module = { exports: {} };
-					const require = undefined;
-					const process = undefined;
-					${p.code}
-					return toolCalls;
-				`) as () => unknown;
-				const calls = fn();
-				if (!Array.isArray(calls) || calls.length === 0) {
-					return mk("execute_code: script must define a non-empty `toolCalls` array.", true);
-				}
-				toolCalls = calls as Array<{ tool: string; args: Record<string, unknown> }>;
+				toolCalls = parseToolCalls(p.code);
 			} catch (e) {
-				return mk(`execute_code: script failed to evaluate: ${String(e)}`, true);
+				const msg = e instanceof Error ? e.message : String(e);
+				if (msg.includes("Script execution timed out")) {
+					return mk("execute_code: script timed out after 5s (infinite loop?)", true);
+				}
+				return mk(`execute_code: script failed to parse: ${msg}`, true);
 			}
 			if (toolCalls.length > 25) {
-				return mk(`execute_code: refusing ${toolCalls.length} calls (max 25 per call). Split into multiple execute_code calls.`, true);
+				return mk(
+					`execute_code: refusing ${toolCalls.length} calls (max 25). Split into multiple execute_code calls.`,
+					true,
+				);
+			}
+
+			const timeout = p.timeout ?? 180_000;
+			const config = getExecuteCodeConfig();
+
+			if (config.backend === "gondolin") {
+				try {
+					const result = await executeInGondolin(toolCalls, ctx.cwd, timeout);
+					return mk(result);
+				} catch (e) {
+					const msg = e instanceof Error ? e.message : String(e);
+					const code = e instanceof Error ? (e as NodeJS.ErrnoException).code : undefined;
+					const notInstalled =
+						code === "ERR_MODULE_NOT_FOUND" ||
+						msg.includes("Cannot find module") ||
+						msg.includes("Cannot find package") ||
+						msg.includes("ERR_MODULE_NOT_FOUND");
+					if (notInstalled) {
+						return mk(
+							"execute_code: gondolin backend configured but @earendil-works/gondolin is not installed. " +
+							"Run `npm install @earendil-works/gondolin` or set executeCode.backend to 'host' in ~/.waywiser/config.json.",
+							true,
+						);
+					}
+					return mk(`execute_code (gondolin): ${msg}`, true);
+				}
 			}
 
 			// 2. Acquire an isolated rpc child from the execute_code lane.
@@ -79,7 +195,6 @@ export default function executeCode(pi: ExtensionAPI): void {
 					`When all finish, reply in at most 8 lines: one line per call, prefixed with its number, marked ok or FAILED(reason); ` +
 					`then a final line starting with "SUMMARY: ".\n\n` +
 					`Tool calls:\n${list}`;
-				const timeout = p.timeout ?? 180_000;
 				const per = Math.floor(timeout / Math.max(toolCalls.length, 2));
 				const t0 = Date.now();
 				const res0 = await state.command({ type: "prompt", message: prompt }, Math.max(5000, Math.min(per, 15000)));

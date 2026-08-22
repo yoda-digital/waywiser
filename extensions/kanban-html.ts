@@ -5,6 +5,7 @@
  *  generateBoardHtml()    → live interactive SPA (talks to localhost REST API + SSE)
  *  generateStaticSnapshot() → offline read-only fallback (all data baked in)
  */
+import { getBoardToken } from "./kanban-server.js";
 
 export interface BoardRow {
 	id: string;
@@ -210,7 +211,9 @@ export function generateBoardHtml(
 	cards: CardRow[],
 	activeBoardId: string,
 	serverPort: number,
+	boardToken?: string,
 ): string {
+	const token = boardToken ?? getBoardToken();
 	const activeBoards = boards.filter(b => !b.archived);
 	const boardCards = sortCards(cards.filter(c => c.board_id === activeBoardId));
 	const blocked = boardCards.filter(c => c.status === "blocked");
@@ -248,12 +251,14 @@ export function generateBoardHtml(
 
 	const js = `
 const API = 'http://localhost:${serverPort}/api';
+const TOKEN = '${token}';
+const AUTH_HEADERS = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN };
 let activeBoard = '${escHtml(activeBoardId)}';
 
 // ── SSE ──
 let evtSrc;
 function connectSSE() {
-	evtSrc = new EventSource('http://localhost:${serverPort}/events');
+	evtSrc = new EventSource('http://localhost:${serverPort}/events?token=' + TOKEN);
 	evtSrc.onopen = () => { document.getElementById('conn-dot').className='dot on'; document.getElementById('conn-text').textContent='Connected'; };
 	evtSrc.onerror = () => { document.getElementById('conn-dot').className='dot off'; document.getElementById('conn-text').textContent='Disconnected'; };
 	evtSrc.onmessage = (e) => {
@@ -279,7 +284,7 @@ async function onDrop(e) {
 	e.preventDefault(); e.currentTarget.classList.remove('drag-over');
 	const status = e.currentTarget.dataset.status;
 	if (!dragId || !status) return;
-	await fetch(API+'/cards/'+dragId, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status}) });
+	await fetch(API+'/cards/'+dragId, { method:'PUT', headers:AUTH_HEADERS, body:JSON.stringify({status}) });
 }
 
 // ── CRUD ──
@@ -301,7 +306,7 @@ async function addCard(status) {
 		type: document.getElementById('new-type-'+status).value,
 		priority: document.getElementById('new-pri-'+status).value,
 		due: document.getElementById('new-due-'+status).value || undefined };
-	await fetch(API+'/cards', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+	await fetch(API+'/cards', { method:'POST', headers:AUTH_HEADERS, body:JSON.stringify(body) });
 }
 function toggleExpand(id) {
 	const el = document.getElementById('expand-'+id);
@@ -316,14 +321,14 @@ async function saveCard(id) {
 		due: document.getElementById('ed-due-'+id).value || null,
 		notes: document.getElementById('ed-notes-'+id).value || null,
 	};
-	await fetch(API+'/cards/'+id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+	await fetch(API+'/cards/'+id, { method:'PUT', headers:AUTH_HEADERS, body:JSON.stringify(body) });
 }
 async function deleteCard(id) {
 	if (!confirm('Delete card '+id+'?')) return;
-	await fetch(API+'/cards/'+id, { method:'DELETE' });
+	await fetch(API+'/cards/'+id, { method:'DELETE', headers:AUTH_HEADERS });
 }
 async function unblock(id) {
-	await fetch(API+'/cards/'+id, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status:'todo',block_reason:null}) });
+	await fetch(API+'/cards/'+id, { method:'PUT', headers:AUTH_HEADERS, body:JSON.stringify({status:'todo',block_reason:null}) });
 }
 function switchBoard(id) {
 	activeBoard = id;
@@ -333,7 +338,7 @@ function switchBoard(id) {
 function addBoard() {
 	const name = prompt('New board name:');
 	if (!name) return;
-	fetch(API+'/boards', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) })
+	fetch(API+'/boards', { method:'POST', headers:AUTH_HEADERS, body:JSON.stringify({name}) })
 		.then(() => location.reload());
 }
 function toggleTheme() {
@@ -358,6 +363,7 @@ function toggleTheme() {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Waywiser Board</title>
 <style>${CSS}</style>
+<script>window.__WAYWISER_TOKEN="${token}"</script>
 </head>
 <body style="display:flex;flex-direction:column;min-height:100vh">
 <header>
