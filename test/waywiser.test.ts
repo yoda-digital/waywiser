@@ -28,6 +28,7 @@ const { getQuiet, setQuiet, parseQuietSetting, inDnd, msUntilDndEnd, parseHM } =
 // @ts-expect-error -- extra named export added for regression testing
 const parseCron = jiti("../extensions/cronjob.js").parseCron;
 const { LEAF_ARGS, runChild } = jiti("../extensions/utils/llmcall.js");
+const { gatherSignals, orient, getProactiveConfig, setProactiveConfig } = jiti("../extensions/proactive.js");
 
 // soul.ts has a default export (extension entry point, not a named-export module);
 // load it the same way test/smoke.test.ts's loadExt() does — handle both raw-function
@@ -1072,4 +1073,69 @@ test("goal budget: steps_taken increments", () => {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const row = db_().prepare("SELECT steps_taken FROM goals WHERE id = 'g_test'").get() as any;
 	assert.equal(row.steps_taken, 1);
+});
+
+// ---------------------------------------------------------------- proactive engine (spec 07 phase 2)
+test("proactive: signal gathering returns signals for overdue cards", () => {
+	db_().prepare("INSERT INTO cards (id, title, status, due) VALUES (?,?,?,?)").run("K_pro_overdue", "Overdue test card", "todo", "2020-01-01 00:00:00");
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "overdue-cards");
+	assert.ok(hit, "expected an overdue-cards signal");
+	assert.equal(hit.priority, 1);
+	assert.equal(hit.requiresLLM, true);
+	assert.ok(hit.body.includes("Overdue test card"));
+});
+
+test("proactive: signal gathering flags goals past deadline as a P0 interrupt", () => {
+	db_().prepare("INSERT INTO goals (id, text, status, deadline) VALUES (?,?,?,?)").run("g_pro_overdue", "overdue goal", "active", "2020-01-01");
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "goals-overdue");
+	assert.ok(hit, "expected a goals-overdue signal");
+	assert.equal(hit.priority, 0);
+	assert.equal(hit.requiresLLM, false);
+});
+
+test("proactive: deduplication suppresses repeat alerts", () => {
+	const signal = { key: "dedup-test", priority: 1 as const, requiresLLM: true, title: "t", body: "b" };
+	const lastAlerts = new Map<string, number>();
+	const first = orient([signal], lastAlerts, 3_600_000);
+	assert.equal(first.length, 1, "first orient() call should surface the signal");
+	const second = orient([signal], lastAlerts, 3_600_000);
+	assert.equal(second.length, 0, "second orient() call within the dedupe window should filter it out");
+});
+
+test("proactive: orient sorts by priority ascending", () => {
+	const low = { key: "low", priority: 2 as const, requiresLLM: true, title: "low", body: "b" };
+	const high = { key: "high", priority: 0 as const, requiresLLM: false, title: "high", body: "b" };
+	const mid = { key: "mid", priority: 1 as const, requiresLLM: true, title: "mid", body: "b" };
+	const out = orient([low, high, mid], new Map(), 3_600_000);
+	assert.deepEqual(out.map((s: { key: string }) => s.key), ["high", "mid", "low"]);
+});
+
+test("proactive: orient suppresses non-P0 signals during quiet hours", () => {
+	const p0 = { key: "p0", priority: 0 as const, requiresLLM: false, title: "p0", body: "b" };
+	const p1 = { key: "p1", priority: 1 as const, requiresLLM: true, title: "p1", body: "b" };
+	const out = orient([p0, p1], new Map(), 3_600_000, { quiet: true });
+	assert.deepEqual(out.map((s: { key: string }) => s.key), ["p0"]);
+});
+
+test("proactive: config defaults + set/get roundtrip preserves sibling keys", () => {
+	const defaults = getProactiveConfig();
+	assert.equal(defaults.enabled, true);
+	assert.equal(defaults.tickActiveMs, 15 * 60_000);
+	assert.equal(defaults.tickQuietMs, 30 * 60_000);
+	assert.equal(defaults.dedupeWindowMs, 60 * 60_000);
+
+	writeJSON(path.join(waywiserHome(), "config.json"), { executeCode: { backend: "host" } });
+	setProactiveConfig({ enabled: false, tickActiveMs: 60_000 });
+	const cfg = getProactiveConfig();
+	assert.equal(cfg.enabled, false);
+	assert.equal(cfg.tickActiveMs, 60_000);
+	assert.equal(cfg.tickQuietMs, 30 * 60_000, "unset fields fall back to defaults");
+
+	const full = readJSON<{ executeCode?: { backend?: string } }>(path.join(waywiserHome(), "config.json"), {});
+	assert.equal(full.executeCode?.backend, "host", "sibling config keys must survive a proactive config write");
+
+	// Reset for any later tests that assume defaults.
+	fs.rmSync(path.join(waywiserHome(), "config.json"), { force: true });
 });

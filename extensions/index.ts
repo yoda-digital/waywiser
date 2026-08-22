@@ -36,6 +36,7 @@ const modules = [
 	"./kanban/index.js",
 	"./todo-compat.js",
 	"./commands.js",
+	"./proactive.js",
 ];
 
 export default async function (pi: ExtensionAPI) {
