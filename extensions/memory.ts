@@ -10,8 +10,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
-import * as path from "node:path";
-import { db_, homeFile } from "./utils/state.js";
+import { db_, homeFile, registry_ } from "./utils/state.js";
 import { recentMemories, rememberRow, logMem, appendEpisode, memSettings, setMemSettings, READ_POOL_PREDICATE, type MemSettings } from "./utils/state.js";
 import { runChild } from "./utils/llmcall.js";
 import { applySupersedeDB, listConflictsDB, runConsolidate, formatConsolidateReport } from "./mem-dream.js";
@@ -377,67 +376,31 @@ export function recallDecision(state: RecallState, key: string, throttle: number
 }
 
 /**
- * Brain-enhanced recall: uses Brain's reciprocal rank fusion when available,
- * falls back to basic FTS match if Brain isn't loaded.
- * Brain's recall does per-term search (not exact phrase), so "decisions"
- * finds "decision", and unicode terms work properly.
+ * Recall via Brain's RRF when a provider is registered, else core FTS.
+ * Never throws — returns text for the model in every path.
  */
-async function brainRecallText(db: ReturnType<typeof db_>, query: string, limit = 5): Promise<{ text: string }> {
+async function brainRecallText(
+	db: ReturnType<typeof db_>,
+	query: string,
+	limit = 5,
+): Promise<{ text: string }> {
 	const q = query.trim();
 	if (!q) return runRecallText(db, q, limit);
 
-	try {
-		// Dynamic import — Brain may or may not be installed
-		const { BrainStore } = await import("../plugins/brain/extensions/brain/store.ts");
-		const { loadBrainConfig } = await import("../plugins/brain/extensions/brain/config.ts");
-		const { recall } = await import("../plugins/brain/extensions/brain/recall.ts");
-
-		const config = loadBrainConfig();
-		// CRITICAL: use the SAME DB that Waywiser's memory tool writes to.
-		// Waywiser's db_() always opens waywiserHome()/waywiser.db (state.ts:30).
-		// Brain's config.dbPath may point elsewhere (e.g. an Obsidian vault copy).
-		// The BrainStore here must read from the DB that `remember` wrote to.
-		const waywiserDbPath = path.join(process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser"), "waywiser.db");
-		const store = new BrainStore(waywiserDbPath);
-
-		// Import embed function for semantic search (cross-language ro/ru/en)
-		let embedFn: ((text: string) => Promise<Float32Array | null>) | undefined;
+	const provider = registry_().recallProvider;
+	if (provider) {
 		try {
-			const { embed } = await import("../plugins/brain/extensions/brain/embeddings.ts");
-			embedFn = (text: string) => embed(text, config);
-		} catch { /* embeddings module not available */ }
-
-		const result = await recall({
-			prompt: q,
-			cwd: process.cwd(),
-			projectKey: null,
-			config: config.recall,
-			scopingConfig: config.scoping,
-			store,
-			embedFn,
-			embeddingsConfig: config.embeddings,
-		});
-
-		store.close();
-
-		if (!result.items.length) {
-			// Brain found nothing — try fallback in case FTS index is stale
-			return runRecallText(db, q, limit);
+			return await provider.recall(q, limit);
+		} catch (e) {
+			process.stderr.write(
+				`waywiser/memory: recallProvider.recall failed, falling back to FTS: ${
+					e instanceof Error ? e.message : String(e)
+				}\n`,
+			);
+			// Fall through to core FTS — provider errors must not break recall.
 		}
-		return {
-			text: result.items
-				.map((item) => {
-					if (item.type === "memory") {
-						return `#${item.id} [memory] ${item.content} (score: ${item.score.toFixed(3)})`;
-					}
-					return `[procedure] ${item.content} (score: ${item.score.toFixed(3)})`;
-				})
-				.join("\n"),
-		};
-	} catch {
-		// Brain not available — fall back to old recall
-		return runRecallText(db, q, limit);
 	}
+	return runRecallText(db, q, limit);
 }
 
 export async function runRecallText(db: ReturnType<typeof db_>, query: string, limit = 5): Promise<{ text: string }> {

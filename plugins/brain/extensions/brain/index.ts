@@ -101,6 +101,49 @@ export default function brain(pi: ExtensionAPI): void {
 
       store.beginSession(ctx.sessionManager.getSessionId?.() ?? "unknown");
 
+      // ── Register recall provider on the shared registry ─────────
+      // This eliminates the dynamic-import hack in core memory.ts.
+      // `store` is the already-open BrainStore — no new connection.
+      try {
+        const { registry_ } = await import("../../../../extensions/utils/state.js");
+        const embeddingsEnabled = config.embeddings?.enabled !== false;
+
+        registry_().recallProvider = {
+          async recall(query: string, limit: number): Promise<{ text: string }> {
+            if (config.recall.mode === "off") {
+              return { text: "No memories matched." };
+            }
+            const projectKey = detectProjectKey(ctx.cwd, config);
+            const result = await recall({
+              prompt: query,
+              cwd: ctx.cwd,
+              projectKey,
+              config: { ...config.recall, maxItems: limit },
+              scopingConfig: config.scoping,
+              store,
+              embedFn: embeddingsEnabled
+                ? (text: string) => embed(text, config)
+                : undefined,
+              embeddingsConfig: config.embeddings,
+            });
+            if (!result.items.length) {
+              return { text: "No memories matched." };
+            }
+            return {
+              text: result.items
+                .map((item) =>
+                  item.type === "memory"
+                    ? `#${item.id} [memory] ${item.content} (score: ${item.score.toFixed(3)})`
+                    : `[procedure] ${item.content} (score: ${item.score.toFixed(3)})`,
+                )
+                .join("\n"),
+            };
+          },
+        };
+      } catch (err) {
+        process.stderr.write(`brain: failed to register recall provider: ${errMsg(err)}\n`);
+      }
+
       // Backfill embeddings for memories that don't have them yet
       if (config.embeddings?.enabled !== false) {
         const unembedded = store.getMemoriesWithoutEmbeddings(20);

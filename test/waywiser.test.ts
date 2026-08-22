@@ -17,7 +17,7 @@ import { createJiti } from "jiti";
 const jiti = createJiti(import.meta.url);
 
 // Import AFTER env is set (state module reads env lazily via waywiserHome()).
-const { db_, closeDb, readJSON, writeJSON, buildSubagentPrompt, shortId, waywiserHome, homeFile, logMem, memlogRecent, appendEpisode, memSettings, setMemSettings, rememberRow, recentMemories, READ_POOL_PREDICATE } = jiti(
+const { db_, closeDb, readJSON, writeJSON, buildSubagentPrompt, shortId, waywiserHome, homeFile, logMem, memlogRecent, appendEpisode, memSettings, setMemSettings, rememberRow, recentMemories, READ_POOL_PREDICATE, registry_ } = jiti(
 	"../extensions/utils/state.js"
 );
 const { htmlToText } = jiti("../extensions/web.js");
@@ -812,4 +812,34 @@ test("memAction: stats shape (stable keys) + list markers", async () => {
 	const l = await memAction(d, "list", {});
 	assert.equal(l.isErr, undefined);
 	assert.ok(/\bsrc=/.test(l.text) || l.text === "Memory is empty.", l.text);
+});
+
+// ── RecallProvider contract (spec 03 §3.1) ──────────────────────────────
+test("RecallProvider: core falls back to FTS when no provider registered", async () => {
+	registry_().recallProvider = undefined;
+	const result = await memAction(db_(), "recall", { query: "test query" });
+	assert.ok(!result.isErr);
+});
+
+test("RecallProvider: core uses provider when registered", async () => {
+	let called = false;
+	registry_().recallProvider = {
+		async recall(query: string, limit: number) {
+			called = true;
+			return { text: `provider-result for "${query}" limit=${limit}` };
+		},
+	};
+	const result = await memAction(db_(), "recall", { query: "provider test" });
+	assert.ok(called, "provider should be called");
+	assert.ok(result.text.includes("provider-result"));
+	registry_().recallProvider = undefined;
+});
+
+test("RecallProvider: core falls back on provider error", async () => {
+	registry_().recallProvider = {
+		async recall() { throw new Error("boom"); },
+	};
+	const result = await memAction(db_(), "recall", { query: "test" });
+	assert.ok(!result.isErr, "should not error — fallback should work");
+	registry_().recallProvider = undefined;
 });
