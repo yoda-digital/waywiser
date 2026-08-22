@@ -25,6 +25,8 @@ const { ftsEscape, runGate, gateEpisode, runRecallText, selectRecallBlock, initi
 const { tokens, jaccard, confForSource, DUPLICATE_JACCARD, NEAR_DUP_JACCARD, buildGateWindow, buildGateInput, GATE_PROMPT, parseGateReply, validateCandidate, buildRecallQuery, renderRecallBlock, RECALL_STOPWORDS, extractText, lastUserEntry, planPass1, MERGE_PROMPT_HEAD, CONFLICT_PROMPT_HEAD } = jiti("../extensions/memrules.js");
 const { runConsolidate, rebuildUserMd, listConflictsDB, applySupersedeDB, formatConsolidateReport } = jiti("../extensions/mem-dream.js");
 const { getQuiet, setQuiet, parseQuietSetting, inDnd, msUntilDndEnd, parseHM } = jiti("../extensions/cronjob.js");
+// @ts-expect-error -- extra named export added for regression testing
+const parseCron = jiti("../extensions/cronjob.js").parseCron;
 const { LEAF_ARGS, runChild } = jiti("../extensions/utils/llmcall.js");
 
 after(() => {
@@ -147,6 +149,28 @@ test("memory: hyphenated query terms stay quoted (no stray column references)", 
 	const expr = ftsEscape("pi-package extension");
 	const rows = d.prepare(`SELECT count(*) c FROM memories_fts WHERE memories_fts MATCH ?`).all(expr) as Array<{ c: number }>;
 	assert.ok(rows[0].c >= 1, `hyphenated term must query as a string term, got: ${expr}`);
+});
+
+// ---------------------------------------------------------------- cron next-fire regression: parseCron must be called with a Date (was: TypeError 'getTime' on undefined)
+test("cron next-fire: parseCron computes next matching minute from a reference Date", () => {
+	// "0 8 * * 1-5" — next 08:00 on a Mon-Fri, strictly after the reference instant.
+	const ref = new Date(2026, 7, 22, 9, 0, 0); // Sat Aug 22 2026 09:00 local
+	const next = new Date(parseCron("0 8 * * 1-5")(ref));
+	assert.equal(next.getHours(), 8);
+	assert.equal(next.getMinutes(), 0);
+	assert.equal(next.getDay(), 1); // Monday
+	assert.equal(next.getFullYear(), 2026);
+	assert.equal(next.getMonth(), 7);
+	assert.equal(next.getDate(), 24);
+	assert.ok(next.getTime() > ref.getTime());
+
+	// "*/5 * * * *" — next multiple of 5 minutes after ref.
+	const n5 = new Date(parseCron("*/5 * * * *")(ref));
+	assert.equal(n5.getMinutes(), 5);
+
+	// Bad expressions still rejected.
+	assert.throws(() => parseCron("0 8 * *"), /5-field/);
+	assert.throws(() => parseCron("0 8 * * mon"), /cannot parse/);
 });
 
 // ---------------------------------------------------------------- cron quiet hours (DND) core

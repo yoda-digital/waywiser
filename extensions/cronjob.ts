@@ -94,78 +94,79 @@ interface CronState {
 	carryoverText?: string;
 }
 
+/**
+ * Minimal cron expression parser: five fields "minute hour dom month dow",
+ * each field supporting star, plain number, ranges A-B, step wildcards, and
+ * comma lists. Sixth field (seconds) must be 0 or star only.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parseCron(expr: string): ((d: Date) => number) {
+	const parts = expr.trim().split(/\s+/);
+	if (parts.length === 6) {
+		const s = parts[0];
+		if (s !== "0" && s !== "*") throw new Error(`second field must be 0 or * (got "${s}")`);
+		parts.shift();
+	}
+	if (parts.length !== 5) throw new Error(`schedule must be a 5-field cron expression (m h dom mon dow), got: "${expr}"`);
+	const field: Array<Set<number>> = [];
+	const minRanges = [
+		[0, 59], // minute
+		[0, 23], // hour
+		[1, 31], // day of month
+		[1, 12], // month
+		[0, 7], // day of week (0 and 7 = Sunday)
+	];
+	parts.forEach((p, i) => {
+		const [lo, hi] = minRanges[i];
+		const set = new Set<number>();
+		for (const chunk of p.split(",")) {
+			const m = chunk.match(/^\*\/(\d+)$/);
+			if (m) {
+				const step = Number(m[1]);
+				if (!Number.isInteger(step) || step <= 0) throw new Error(`bad step in "${chunk}"`);
+				for (let v = lo; v <= hi; v += step) set.add(v);
+				continue;
+			}
+			if (chunk === "*") {
+				for (let v = lo; v <= hi; v++) set.add(v);
+				continue;
+			}
+			const range = chunk.match(/^(\d+)-(\d+)$/);
+			if (range) {
+				const a = Number(range[1]);
+				const b = Number(range[2]);
+				if (a < lo || b > hi || a > b) throw new Error(`range "${chunk}" outside ${lo}-${hi}`);
+				for (let v = a; v <= b; v++) set.add(v);
+				continue;
+			}
+			const single = chunk.match(/^\d+$/);
+			if (single) {
+				const v = Number(chunk);
+				if (v < lo || v > hi) throw new Error(`value "${chunk}" outside ${lo}-${hi}`);
+				set.add(v);
+				continue;
+			}
+			throw new Error(`cannot parse cron field "${chunk}"`);
+		}
+		field.push(set);
+	});
+	return (d: Date): number => {
+		for (let ms = d.getTime() + 60_000; ms < d.getTime() + 400 * 86_400_000; ms += 60_000) {
+			const c = new Date(ms);
+			const dowOk = field[4].has(c.getDay()) || (c.getDay() === 0 && field[4].has(7));
+			if (field[0].has(c.getMinutes()) && field[1].has(c.getHours()) && field[2].has(c.getDate()) && field[3].has(c.getMonth() + 1) && dowOk) {
+				return ms;
+			}
+		}
+		throw new Error(`cron expression "${expr}" matches no time in 400 days (check dom/dow interaction)`);
+	};
+}
+
 export default function cronjob(pi: ExtensionAPI): void {
 	const states = new Map<string, CronState>();
 	let latestCtx: ExtensionContext | undefined;
 
-	/**
-	 * Minimal cron expression parser: five fields "minute hour dom month dow",
-	 * each field supporting star, plain number, ranges A-B, step wildcards, and
-	 * comma lists. Sixth field (seconds) must be 0 or star only.
-	 */
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function parseCron(expr: string): ((d: Date) => number) {
-		const parts = expr.trim().split(/\s+/);
-		if (parts.length === 6) {
-			const s = parts[0];
-			if (s !== "0" && s !== "*") throw new Error(`second field must be 0 or * (got "${s}")`);
-			parts.shift();
-		}
-		if (parts.length !== 5) throw new Error(`schedule must be a 5-field cron expression (m h dom mon dow), got: "${expr}"`);
-		const field: Array<Set<number>> = [];
-		const minRanges = [
-			[0, 59], // minute
-			[0, 23], // hour
-			[1, 31], // day of month
-			[1, 12], // month
-			[0, 7], // day of week (0 and 7 = Sunday)
-		];
-		parts.forEach((p, i) => {
-			const [lo, hi] = minRanges[i];
-			const set = new Set<number>();
-			for (const chunk of p.split(",")) {
-				const m = chunk.match(/^\*\/(\d+)$/);
-				if (m) {
-					const step = Number(m[1]);
-					if (!Number.isInteger(step) || step <= 0) throw new Error(`bad step in "${chunk}"`);
-					for (let v = lo; v <= hi; v += step) set.add(v);
-					continue;
-				}
-				if (chunk === "*") {
-					for (let v = lo; v <= hi; v++) set.add(v);
-					continue;
-				}
-				const range = chunk.match(/^(\d+)-(\d+)$/);
-				if (range) {
-					const a = Number(range[1]);
-					const b = Number(range[2]);
-					if (a < lo || b > hi || a > b) throw new Error(`range "${chunk}" outside ${lo}-${hi}`);
-					for (let v = a; v <= b; v++) set.add(v);
-					continue;
-				}
-				const single = chunk.match(/^\d+$/);
-				if (single) {
-					const v = Number(chunk);
-					if (v < lo || v > hi) throw new Error(`value "${chunk}" outside ${lo}-${hi}`);
-					set.add(v);
-					continue;
-				}
-				throw new Error(`cannot parse cron field "${chunk}"`);
-			}
-			field.push(set);
-		});
-		return (d: Date): number => {
-			for (let ms = d.getTime() + 60_000; ms < d.getTime() + 400 * 86_400_000; ms += 60_000) {
-				const c = new Date(ms);
-				const dowOk = field[4].has(c.getDay()) || (c.getDay() === 0 && field[4].has(7));
-				if (field[0].has(c.getMinutes()) && field[1].has(c.getHours()) && field[2].has(c.getDate()) && field[3].has(c.getMonth() + 1) && dowOk) {
-					return ms;
-				}
-			}
-			throw new Error(`cron expression "${expr}" matches no time in 400 days (check dom/dow interaction)`);
-		};
-	}
-
+	
 	const fireJob = (id: string): void => {
 		const state = states.get(id);
 		if (!state) return;
@@ -230,7 +231,7 @@ export default function cronjob(pi: ExtensionAPI): void {
 			if (Number.isNaN(t)) throw new Error(`bad @time "${at[1]}"`);
 			return { at: t };
 		}
-		return { d: new Date(nextFireMillis(schedule)()) };
+		return { d: new Date(nextFireMillis(schedule)(new Date())) };
 	}
 	const nextFireMillis = (expr: string): (() => number) => parseCron(expr);
 
