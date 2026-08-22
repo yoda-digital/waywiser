@@ -22,6 +22,7 @@ export type MemSource = "user" | "agent" | "external";
 export const confForSource: Record<MemSource, number> = { user: 0.9, agent: 0.6, external: 0.3 };
 export const DUPLICATE_JACCARD = 0.85;
 export const NEAR_DUP_JACCARD = 0.8;
+export const SUPERSEDE_MIN_OVERLAP = 0.15;
 
 // ── Gate (spec §4) ────────────────────────────────────────────────────────
 
@@ -80,7 +81,7 @@ export function parseGateReply(raw: string): GateCandidate[] {
 	try {
 		const j = JSON.parse(m[0]) as { candidates?: unknown };
 		if (!Array.isArray(j.candidates)) return [];
-		return j.candidates.slice(0, 2).filter((c): c is GateCandidate => !!c && typeof c === "object");
+		return j.candidates.slice(0, 3).filter((c): c is GateCandidate => !!c && typeof c === "object");
 	} catch {
 		return [];
 	}
@@ -105,6 +106,14 @@ export function validateCandidate(
 		const target = existing.find((e) => e.id === c.supersedes as number);
 		if (!target) return { ok: false, reason: "supersedes-missing" };
 		if (target.supersedes === (c.id ?? 0) && (c.id ?? -1) !== 0) return { ok: false, reason: "supersede-cycle" };
+		// Require non-trivial content overlap. If the new memory and the superseded
+		// memory have Jaccard < SUPERSEDE_MIN_OVERLAP, the LLM is almost certainly
+		// pointing at the wrong target. This catches hallucinated supersedes values
+		// that could silently erase unrelated critical memories.
+		const overlap = jaccard(c.content, target.content);
+		if (overlap < SUPERSEDE_MIN_OVERLAP) {
+			return { ok: false, reason: `supersedes-low-overlap-${overlap.toFixed(2)}` };
+		}
 	}
 	for (const e of existing) {
 		if (jaccard(c.content, e.content) >= DUPLICATE_JACCARD) return { ok: false, reason: `duplicate-of-${e.id}` };
