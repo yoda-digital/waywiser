@@ -1,7 +1,7 @@
 /**
  * waywiser-*llmcall — the ONLY model-call primitive in the pack.
  * One-shot `pi --mode rpc` child with core-only args (same pattern as
- * kanban's worker spawn, extensions/kanban.ts:135). Run the child, deliver
+ * kanban's worker spawn, extensions/kanban/worker.ts). Run the child, deliver
  * one prompt, collect the final assistant text, kill. Shared by the memory
  * gate (B) and consolidation pass 2 (D). Single-flight: one child at a time;
  * concurrent callers queue and wait their turn instead of being rejected.
