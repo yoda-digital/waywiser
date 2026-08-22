@@ -105,8 +105,7 @@ waywiser/
 │       └── pa-protocol/             🔬 untested
 │
 ├── bin/
-│   ├── waywiser                     ← Launcher (core extensions, plugin discovery for extras)
-│   └── hermes                       ← Legacy alias (backward compat)
+│   └── waywiser                     ← Launcher (core extensions, plugin discovery for extras)
 │
 ├── config/
 │   ├── SOUL.md                      ← Default identity template
@@ -337,5 +336,4 @@ MIT
 
 ---
 
-Built on pi. Adapted from NousResearch/hermes-agent (MIT). Legacy `~/.hermes`
-homes are auto-migrated on first run.
+Built on [pi](https://github.com/earendil-works/pi-coding-agent). MIT.

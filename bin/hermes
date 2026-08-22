@@ -1,5 +1,0 @@
-#!/usr/bin/env bash
-# hermes — legacy name. The agent is now Waywiser; use bin/waywiser.
-set -euo pipefail
-echo "waywiser: 'hermes' was renamed. Using waywiser (this file is a compatibility shim)." >&2
-exec "$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)/waywiser" "$@"

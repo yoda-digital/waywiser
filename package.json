@@ -39,8 +39,7 @@
 		"typebox": "^1.3.16"
 	},
 	"bin": {
-		"waywiser": "./bin/waywiser",
-		"hermes": "./bin/hermes"
+		"waywiser": "./bin/waywiser"
 	},
 	"scripts": {
 		"test": "node --test 'test/**/*.test.ts'",
