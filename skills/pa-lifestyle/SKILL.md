@@ -1,6 +1,7 @@
 ---
 name: pa-lifestyle
 description: Lifestyle and concierge services — personal errands, dining and entertainment recommendations, gift ideas, household coordination, wellness reminders, personal organization. Use for personal lifestyle requests, recommendations, and preference-based selections.
+model_tier: verified
 ---
 
 # Lifestyle Management

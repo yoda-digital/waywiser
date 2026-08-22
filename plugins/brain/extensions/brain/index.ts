@@ -205,12 +205,18 @@ export default function brain(pi: ExtensionAPI): void {
         };
       }
 
+      // Brain is loaded as a separate Pi extension AFTER core (see
+      // bin/waywiser), so Pi's before_agent_start handlers already ran
+      // core's assembly pass by the time this handler fires — the shared
+      // prompt-budget injection registry has already been consumed into
+      // event.systemPrompt. Brain is therefore the one extension that
+      // bypasses that registry entirely: it appends its recall context
+      // directly on top of the already-assembled prompt.
       return {
         systemPrompt: (event.systemPrompt ?? "") + "\n" + renderBrainContext(recalled),
       };
     } catch (err) {
       process.stderr.write(`brain: recall error: ${errMsg(err)}\n`);
-      return undefined;
     }
   });
 

@@ -1,6 +1,7 @@
 ---
 name: pa-governance
 description: Governance and board support — meeting agendas, minutes formatting (Robert's Rules), resolution drafting, policy documentation, corporate governance, committee coordination. Use for board meetings, corporate governance tasks, formal proceedings, and organizational policy work.
+model_tier: untested
 ---
 
 # Governance & Board Support

@@ -34,6 +34,7 @@ import { db_, waywiserHome, readJSON, shortId, registry_ } from "./utils/state.j
 import { createPiRpcClient, type PiRpcClient } from "./utils/rpc.js";
 import { startBoardServer, broadcastEvent, setHtmlGenerator } from "./kanban-server.js";
 import { generateBoardHtml, generateStaticSnapshot, type BoardRow, type CardRow } from "./kanban-html.js";
+import { registerInjection, removeInjection, PRIORITIES as INJECTION_PRIORITIES } from "./utils/prompt-budget.js";
 
 const STATUSES = ["todo", "doing", "review", "done", "blocked"] as const;
 type Status_ = (typeof STATUSES)[number];
@@ -617,13 +618,22 @@ export default function kanban(pi: ExtensionAPI): void {
 
 	// 3. Session-start-adjacent: inject open cards into the system prompt so the
 	// model sees board state even in non-TUI modes (e.g. `waywiser -p`).
-	pi.on("before_agent_start", (event) => {
+	pi.on("before_agent_start", () => {
 		const cards = getCards(activeBoardId).filter((c) => c.status !== "done");
-		if (!cards.length) return;
+		if (!cards.length) {
+			removeInjection("kanban");
+			return;
+		}
 		const summary = cards
 			.map((c) => `${c.id} [${c.status}/${c.priority}] ${c.title}${c.due ? ` (due ${c.due.slice(0, 10)})` : ""}${c.assignee ? ` → ${c.assignee}` : ""}`)
 			.join("\n");
-		return { systemPrompt: `${event.systemPrompt}\n\n[Kanban — ${cards.length} open]\n${summary}` };
+		registerInjection({
+			key: "kanban",
+			priority: INJECTION_PRIORITIES.KANBAN,
+			cacheable: false,
+			content: `\n\n[Kanban — ${cards.length} open]\n${summary}`,
+		});
+		// NO return — buildSystemPrompt handles assembly
 	});
 
 	const SUBDESCRIPTION =

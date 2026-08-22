@@ -1,6 +1,7 @@
 ---
 name: pa-onboard
 description: PA system onboarding — first-run setup for personal assistant capabilities. Creates default crons, captures preferences, initializes PA infrastructure. Auto-triggered on first PA interaction when no pa-onboarded memory exists.
+model_tier: verified
 ---
 
 # PA Onboarding

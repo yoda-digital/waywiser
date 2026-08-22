@@ -15,6 +15,7 @@ import { db_, homeFile, registry_, waywiserHome } from "./utils/state.js";
 import { recentMemories, rememberRow, logMem, appendEpisode, memSettings, setMemSettings, READ_POOL_PREDICATE, type MemSettings } from "./utils/state.js";
 import { runChild } from "./utils/llmcall.js";
 import { applySupersedeDB, listConflictsDB, runConsolidate, formatConsolidateReport } from "./mem-dream.js";
+import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
 import {
 	buildGateWindow,
 	buildGateInput,
@@ -270,7 +271,6 @@ export function registerMemory(pi: ExtensionAPI): void {
 	});
 
 	// Digest injection: top recent/high-frequency memories, bounded, stable per session.
-	let digest = "";
 	pi.on("session_start", () => {
 		let digestText = "";
 		try {
@@ -288,14 +288,19 @@ export function registerMemory(pi: ExtensionAPI): void {
 		} catch {
 			digestText = "";
 		}
-		digest = digestText; // digest build behavior unchanged (digest = full-text string, "" on no rows or error)
+		if (digestText) {
+			registerInjection({ key: "memory-digest", priority: PRIORITIES.MEMORY_DIGEST, cacheable: true, content: digestText });
+		} else {
+			removeInjection("memory-digest");
+		}
 		recallState = initialRecallState; // block dies with the session; digest stays the one source of the session-stable block
 	});
 
 	pi.on("before_agent_start", (event) => {
 		const s = memSettings();
 		if (s.recall !== "selective") {
-			return digest ? { systemPrompt: event.systemPrompt + digest } : undefined;   // "off" and "top8" = today's behavior, byte-identical
+			removeInjection("memory-recall"); // "off" and "top8" = today's behavior, byte-identical (digest only)
+			return;
 		}
 		const terms = buildRecallQuery(event.prompt);
 		const key = terms.join(" ");
@@ -311,8 +316,12 @@ export function registerMemory(pi: ExtensionAPI): void {
 			}
 			recallState = { ...recallState, block, lastKey: key, lastSelectionTurn: recallState.userTurns };
 		}
-		const append = digest + recallState.block;
-		return append ? { systemPrompt: event.systemPrompt + append } : undefined;
+		if (recallState.block) {
+			registerInjection({ key: "memory-recall", priority: PRIORITIES.MEMORY_RECALL, cacheable: false, content: recallState.block });
+		} else {
+			removeInjection("memory-recall");
+		}
+		// NO return — buildSystemPrompt handles assembly
 	});
 
 	let gateAccum: string[] = [];

@@ -1,6 +1,7 @@
 ---
 name: pa-doc-writer
 description: Professional document drafting — emails, memos, reports, meeting minutes, proposals, presentations. Use when asked to write, review, edit, or format any business or professional document.
+model_tier: verified
 ---
 
 # Document Writer

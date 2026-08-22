@@ -1,6 +1,7 @@
 ---
 name: pa-decision-support
 description: Decision support and strategic analysis — options evaluation, trade-off analysis, risk assessment, stakeholder impact, OODA loop, structured decision-making. Use for important decisions requiring multiple perspectives, irreversible choices, or high-stakes analysis.
+model_tier: experimental
 ---
 
 # Decision Support

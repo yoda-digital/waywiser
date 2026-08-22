@@ -1,6 +1,7 @@
 ---
 name: pa-hr-support
 description: HR administrative support — onboarding checklists, job descriptions, employee lifecycle tracking, policy drafting, benefits coordination, performance review preparation. Use for people operations tasks, HR documentation, and workforce management support.
+model_tier: untested
 ---
 
 # HR Administrative Support

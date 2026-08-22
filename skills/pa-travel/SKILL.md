@@ -1,6 +1,7 @@
 ---
 name: pa-travel
 description: Travel planning and management — itinerary building, booking research, document checklists, duty of care, expense tracking, logistics coordination. Use when planning trips, organizing travel logistics, or managing travel policies.
+model_tier: experimental
 ---
 
 # Travel Management

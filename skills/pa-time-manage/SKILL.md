@@ -1,6 +1,7 @@
 ---
 name: pa-time-manage
 description: Time and task management — scheduling, priorities, calendar blocking, deadline tracking. Use for planning days/weeks, resolving scheduling conflicts, and productivity workflows.
+model_tier: verified
 ---
 
 # Time & Task Management
