@@ -5,10 +5,14 @@
 > can edit by hand, and a whole home you can nuke in one `rm -rf`. No telemetry,
 > no cloud sync. Your LLM runs on your hardware or behind your own API key.
 
-A personal AI agent built on [pi](https://github.com/earendil-works/pi-coding-agent).
-Extends pi with persistent memory, task delegation, project boards, MCP
-integrations, scheduled jobs, notifications, and a permission engine — all as
-in-process TypeScript extensions. Nothing patches pi's core.
+A proactive personal AI agent built on [pi](https://github.com/earendil-works/pi-coding-agent).
+Waywiser doesn't wait to be spoken to — it monitors your boards, goals, and
+deadlines, alerts you when something needs attention, adapts to your
+communication style, and learns from corrections in real time. Extends pi
+with persistent memory, task delegation, project boards, a proactive cognition
+engine, meta-skill behavioral engines, MCP integrations, scheduled jobs,
+notifications, and a permission engine — all as in-process TypeScript
+extensions. Nothing patches pi's core.
 
 ## Architecture
 
@@ -33,9 +37,10 @@ waywiser/
 │   ├── web.ts                   ← Web search + extract (SSRF-guarded)
 │   ├── commands.ts              ← Slash commands, goals, structured traces
 │   ├── skills-manage.ts         ← Playbook catalog with tier badges
+│   ├── proactive.ts             ← Proactive cognition engine (OODA loop)
+│   ├── meta-skills.ts           ← Behavioral engines (EQ, discretion, adaptability)
 │   ├── todo-compat.ts           ← /todo → kanban shim
 │   ├── clarify.ts               ← User interaction tool
-│   ├── soul.ts                  ← Identity persistence
 │   └── utils/
 │       ├── state.ts             ← Shared DB, registry, config
 │       ├── rpc.ts               ← Pi RPC client + warm pool
@@ -78,20 +83,36 @@ on every launch. On first run, Waywiser walks you through setup: timezone,
 working hours, daily/weekly reviews, notification channels.
 
 **What you get out of the box:**
+
+**Proactive intelligence:**
+- Proactive cognition engine — OODA loop ticks every 15 min, monitors boards/goals/deadlines, alerts without consuming GPU
+- Emotional intelligence — detects frustration from message patterns, adapts communication style in real time
+- Discretion — suppresses low-value alerts during deep focus, caps notifications, respects quiet hours
+- Adaptability — catches corrections instantly ("no, use X"), creates memories and adjusts same-session
+- Multi-tasking — spawns background subagents for queued work during idle periods
+
+**Memory & learning:**
 - Cross-session memory (FTS5 + Brain's reciprocal rank fusion recall)
+- Deterministic memory extraction per turn (CPU, ~1ms — no GPU contention)
+- LLM-powered reflective learning at conversation boundaries (nuanced signals)
 - Procedural preferences ("when X, prefer Y over Z") with evidence tracking
 - Auto-evolution: mature procedures → candidate skills → competitive evaluation
+- Embedding on CPU (`num_gpu: 0`), LRU cache, batch API — zero GPU contention
+- Memory export/import for data portability
+
+**Tools & integrations:**
 - Task delegation (3 concurrent subagents, depth-capped at 2)
 - Kanban boards (authenticated web dashboard + TUI + markdown)
 - MCP integrations (Gmail, Calendar, Notion, etc.)
 - Scheduled jobs (cron + one-shot timers, auto-pause on repeated failures)
 - Desktop/Telegram/webhook notifications
-- SOUL.md identity persistence with consolidation
-- Permission engine (8-class risk taxonomy, planning mode, session budgets)
-- Structured trace events with `/trace export`
-- Goal budgets (`/goal --max-steps 30 --deadline 2026-09-01`)
-- SSRF protection, sandboxed code execution, prompt cache telemetry
 - 19 PA playbooks (time management, finance, travel, research, etc.)
+
+**Safety & observability:**
+- Permission engine (8-class risk taxonomy, planning mode, session budgets)
+- Sandboxed code execution (vm.createContext + optional Gondolin micro-VM)
+- SSRF protection, prompt cache telemetry, structured trace events
+- Goal budgets, SOUL.md identity with consolidation
 - Obsidian-compatible vault at `~/.waywiser/brain/`
 
 ### Optional: Obsidian Plugin
@@ -171,6 +192,11 @@ Then enable "Waywiser Brain" in Obsidian Settings → Community Plugins.
 | Real-time DB refresh | — | — | ✅ |
 | Graph view coloring | — | — | ✅ |
 | Confidence bars | — | — | ✅ |
+| Proactive engine (OODA loop) | ✅ | ✅ | ✅ |
+| Emotional intelligence | ✅ | ✅ | ✅ |
+| Discretion filter | ✅ | ✅ | ✅ |
+| Adaptability (correction detect) | ✅ | ✅ | ✅ |
+| Multi-tasking (background delegation) | ✅ | ✅ | ✅ |
 | PA playbooks (19 domains) | ✅ | ✅ | ✅ |
 
 ## Playbooks (Personal Assistant)
@@ -223,9 +249,17 @@ not, the first PA request triggers the `pa-onboard` setup wizard which:
 - **Thinking level** — calibrated per domain complexity (low → max)
 - **Guardrails** — domain-specific safety boundaries and escalation rules
 
-Six cross-cutting meta-skills (Emotional Intelligence, Discretion, Anticipatory
-Thinking, Adaptability, Multi-tasking, Continuous Learning) are embedded in
-SOUL.md and apply across all domains.
+Six cross-cutting meta-skills are implemented as runtime behavioral engines
+(not just SOUL.md bullets):
+
+| Meta-Skill | Engine | How it works |
+|------------|--------|-------------|
+| **Emotional Intelligence** | `meta-skills.ts` | Analyzes message patterns at `turn_end`; injects awareness into system prompt |
+| **Discretion** | `meta-skills.ts` | Filters proactive notifications; caps at 3/hour; suppresses during deep focus |
+| **Anticipatory Thinking** | `proactive.ts` | OODA loop scans calendar, boards, goals; prepares before deadlines hit |
+| **Adaptability** | `meta-skills.ts` | Detects corrections instantly; creates memories and adjusts same-session |
+| **Multi-tasking** | `meta-skills.ts` | Spawns background subagents for queued kanban work during idle |
+| **Continuous Learning** | Brain `learner.ts` | Two-pass learning (deterministic + LLM reflection) at conversation boundaries |
 
 ## Security
 
@@ -268,12 +302,45 @@ To disable a plugin, rename or remove its directory from `plugins/`.
 
 ## Features (Core)
 
+### Proactive Engine
+
+Waywiser runs a continuous OODA loop (Observe-Orient-Decide-Act) between user
+interactions. Every 15 minutes (30 during quiet hours), it:
+
+1. **Senses** — SQL-only signal gathering (zero LLM cost): overdue cards,
+   goals past deadline, cron failures, evolution candidates, user absence
+2. **Orients** — priority scores each signal (P0 interrupt → P3 background),
+   deduplicates, applies discretion filter
+3. **Decides + Acts** — P0 alerts go via desktop/Telegram (no GPU); P1-P2
+   triggers an agent turn via `sendUserMessage`; P3 runs silently
+
+The engine pauses during active conversation and re-arms when the agent
+settles. Configure via `/proactive` (on/off/tick/signals/status) or
+`~/.waywiser/config.json`.
+
+### Meta-Skills
+
+Four behavioral engines run as runtime modules, not just prompt text:
+
+- **Emotional Intelligence** — detects frustration (short replies, repeated
+  corrections, caps) and injects communication-style guidance
+- **Discretion** — caps proactive notifications at 3/hour, suppresses during
+  deep conversations (>5 turns), never sends sensitive content externally
+- **Adaptability** — catches corrections ("no, use X") in real time, creates
+  memories immediately (doesn't wait for session boundary)
+- **Multi-tasking** — spawns background subagents for kanban cards assigned
+  to "subagent" during idle periods
+
+Manage via `/meta-skills` (status/emotional/discretion/corrections).
+
 ### Memory
 
 Cross-session memory with full-text search (SQLite FTS5). Waywiser remembers
 your preferences, project context, and lessons across sessions.
 
-- **Automatic writes:** a turn-end gate extracts durable facts
+- **Automatic writes:** deterministic pattern matching at `turn_end` extracts
+  preferences, corrections, and decisions (~1ms CPU, no GPU). LLM-powered
+  reflective learning runs at conversation boundaries for nuanced signals.
 - **Selective recall:** BM25-ranked relevant memories injected per turn
 - **RecallProvider:** when Brain is loaded, its RRF recall transparently
   replaces core FTS (no dynamic imports, no second DB connection)
@@ -369,14 +436,14 @@ All config lives in `~/.waywiser/`:
 ## Tests
 
 ```bash
-# Core + security + prompt-budget tests
-npm test                                           # 172 tests (166 pass, 6 e2e skip)
+# Core + security + proactive + meta-skills tests
+npm test                                           # 196 tests (190 pass, 6 e2e skip)
 
 # Brain plugin tests
 npm run test:brain                                 # 332 tests
 
 # Everything
-npm run test:all                                   # 504 total
+npm run test:all                                   # 528 total
 
 # End-to-end evals (requires a running model)
 WAYWISER_E2E_MODEL=qwen3:latest npm run test:e2e   # 6 tests
