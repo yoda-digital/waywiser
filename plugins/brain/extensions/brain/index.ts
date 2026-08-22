@@ -42,10 +42,25 @@ import {
 import { checkEvolutionTriggers, promotePending } from "./evolve.ts";
 import { vaultSyncInbound, vaultSyncOutbound } from "./vault.ts";
 import { detectProjectKey } from "./policy.ts";
-import type { BrainConfig } from "./types.ts";
+import type { BrainConfig, RecallResult } from "./types.ts";
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
+}
+
+/**
+ * Render RecallResult items in the compact `#id [type] content (score: N)`
+ * form used by the RecallProvider's tool-facing text. Shared by the fresh
+ * and cache-hit paths so both stay byte-identical.
+ */
+function formatRecallItems(items: RecallResult["items"]): string {
+  return items
+    .map((item) =>
+      item.type === "memory"
+        ? `#${item.id} [memory] ${item.content} (score: ${item.score.toFixed(3)})`
+        : `[procedure] ${item.content} (score: ${item.score.toFixed(3)})`,
+    )
+    .join("\n");
 }
 
 export default function brain(pi: ExtensionAPI): void {
@@ -56,6 +71,18 @@ export default function brain(pi: ExtensionAPI): void {
 
   let sessionReflectionCount = 0;
   let gateAccum: string[] = [];
+
+  // ── Per-turn recall cache (eliminates duplicate recall() calls) ──
+  // `before_agent_start` fires exactly once per user turn, before any tool
+  // call can run, so its recall() is always the *first* recall of the turn —
+  // it populates this cache. If the agent later calls `memory action=recall`
+  // (routed through the RecallProvider below) with the same query in that
+  // same turn, the provider reuses this result instead of re-running
+  // embed() + FTS5 + RRF. One-shot: consuming it clears it, so a second,
+  // different-query tool call in the same turn still gets a fresh recall,
+  // and the next turn's before_agent_start always overwrites it before
+  // anything could read a stale entry.
+  let cachedRecall: { prompt: string; maxItems: number; result: RecallResult } | null = null;
 
   // ── Embedding bookkeeping (#24 failure logging, #31 concurrency cap) ──
   let embedInFlight = 0;
@@ -118,6 +145,7 @@ export default function brain(pi: ExtensionAPI): void {
       embedInFlight = 0;
       embedFailures = 0;
       embedSuccesses = 0;
+      cachedRecall = null; // never leak a previous session's recall across the boundary
 
       trace.resetSession(ctx.sessionManager);
 
@@ -144,6 +172,18 @@ export default function brain(pi: ExtensionAPI): void {
             if (config.recall.mode === "off") {
               return { text: "No memories matched." };
             }
+
+            // Reuse this turn's before_agent_start recall when the query
+            // matches exactly and it covered at least `limit` items — saves
+            // a duplicate embed() call + FTS5 + RRF pass (see cachedRecall
+            // doc comment above).
+            if (cachedRecall && cachedRecall.prompt === query && cachedRecall.maxItems >= limit) {
+              const { result } = cachedRecall;
+              cachedRecall = null; // one-shot — avoid stale reuse later in the turn
+              if (!result.items.length) return { text: "No memories matched." };
+              return { text: formatRecallItems(result.items.slice(0, limit)) };
+            }
+
             const projectKey = detectProjectKey(ctx.cwd, config);
             const result = await recall({
               prompt: query,
@@ -160,15 +200,7 @@ export default function brain(pi: ExtensionAPI): void {
             if (!result.items.length) {
               return { text: "No memories matched." };
             }
-            return {
-              text: result.items
-                .map((item) =>
-                  item.type === "memory"
-                    ? `#${item.id} [memory] ${item.content} (score: ${item.score.toFixed(3)})`
-                    : `[procedure] ${item.content} (score: ${item.score.toFixed(3)})`,
-                )
-                .join("\n"),
-            };
+            return { text: formatRecallItems(result.items) };
           },
         };
       } catch (err) {
@@ -216,6 +248,11 @@ export default function brain(pi: ExtensionAPI): void {
       });
 
       trace.noteRecall(recalled);
+
+      // Cache for the RecallProvider (see cachedRecall doc comment above) —
+      // refreshed on every turn, so a tool call from a *previous* turn can
+      // never read a stale entry here.
+      cachedRecall = { prompt: event.prompt ?? "", maxItems: config.recall.maxItems, result: recalled };
 
       if (!recalled.items.length) return;
 

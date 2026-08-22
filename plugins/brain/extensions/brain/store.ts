@@ -992,9 +992,16 @@ export class BrainStore {
     ).run(memoryId, embedding, model);
   }
 
+  // Recency-windowed: without this, semantic recall loads every embedding
+  // ever stored (thousands at scale) on every turn just to compute cosine
+  // similarity against a handful of matches. Memories older than 90 days
+  // are vanishingly unlikely to be the semantic match for a fresh prompt,
+  // and FTS5 lexical search (unbounded by this window) still finds them.
   getAllEmbeddings(): Array<{ memoryId: number; embedding: Buffer }> {
     const rows = this.db.prepare(
-      "SELECT memory_id, embedding FROM memory_embeddings"
+      `SELECT me.memory_id, me.embedding FROM memory_embeddings me
+       JOIN memories m ON m.id = me.memory_id
+       WHERE m.created_at > datetime('now', '-90 days')`
     ).all() as Array<{ memory_id: number; embedding: Uint8Array }>;
     return rows.map(r => ({ memoryId: r.memory_id, embedding: Buffer.from(r.embedding) }));
   }
