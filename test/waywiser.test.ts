@@ -29,6 +29,17 @@ const { getQuiet, setQuiet, parseQuietSetting, inDnd, msUntilDndEnd, parseHM } =
 const parseCron = jiti("../extensions/cronjob.js").parseCron;
 const { LEAF_ARGS, runChild } = jiti("../extensions/utils/llmcall.js");
 
+// soul.ts has a default export (extension entry point, not a named-export module);
+// load it the same way test/smoke.test.ts's loadExt() does — handle both raw-function
+// and ESM-namespace interop shapes returned by jiti.
+function loadDefaultExport(mod: unknown): (api: unknown) => unknown {
+	if (typeof mod === "function") return mod as (api: unknown) => unknown;
+	const d = (mod as { default?: unknown }).default;
+	if (typeof d === "function") return d as (api: unknown) => unknown;
+	throw new Error("no function export found");
+}
+const soulDefault = loadDefaultExport(jiti("../extensions/soul.js"));
+
 after(() => {
 	closeDb();
 	fs.rmSync(tmp, { recursive: true, force: true });
@@ -893,4 +904,108 @@ test("RecallProvider: core falls back on provider error", async () => {
 	const result = await memAction(db_(), "recall", { query: "test" });
 	assert.ok(!result.isErr, "should not error — fallback should work");
 	registry_().recallProvider = undefined;
+});
+
+// ── memory export/import (spec 03 §3.5) ─────────────────────────────────
+test("memory: export then import round-trips", async () => {
+	const d = db_();
+	const content = "round-trip-test-" + Date.now();
+	rememberRow(d, { type: "fact", content, confidence: 0.9 });
+
+	const exportResult = await memAction(d, "export", {});
+	assert.ok(!exportResult.isErr);
+	assert.ok(exportResult.text.includes("Exported"));
+
+	// Delete the memory
+	d.prepare("DELETE FROM memories WHERE content = ?").run(content);
+
+	// Import should restore it
+	const importResult = await memAction(d, "import", {});
+	assert.ok(!importResult.isErr);
+	assert.ok(importResult.text.includes("Imported"));
+
+	// Verify it exists
+	const row = d.prepare("SELECT * FROM memories WHERE content = ?").get(content);
+	assert.ok(row, "imported item should exist");
+
+	// Cleanup
+	d.prepare("DELETE FROM memories WHERE content = ?").run(content);
+});
+
+test("memory: import deduplicates existing content", async () => {
+	const d = db_();
+	const content = "dedup-test-" + Date.now();
+	rememberRow(d, { type: "fact", content, confidence: 0.9 });
+
+	// Export (includes the memory)
+	await memAction(d, "export", {});
+
+	// Import again — should skip the duplicate
+	const result = await memAction(d, "import", {});
+	assert.ok(result.text.includes("skipped"));
+
+	// Cleanup
+	d.prepare("DELETE FROM memories WHERE content = ?").run(content);
+});
+
+test("memory: import reports file-not-found for a missing path", async () => {
+	const d = db_();
+	const result = await memAction(d, "import", { file: path.join(tmp, "does-not-exist.json") });
+	assert.equal(result.isErr, true);
+	assert.ok(result.text.includes("File not found"), result.text);
+});
+
+// ── soul consolidate (spec 03 §3.4) ─────────────────────────────────────
+test("soul: consolidate reports counts and flags contradictions above threshold", async () => {
+	let execute: ((...args: unknown[]) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+	const stubPi = {
+		on: () => undefined,
+		registerTool: (t: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> }) => {
+			execute = t.execute;
+		},
+	};
+	soulDefault(stubPi as never);
+	assert.ok(execute, "soul tool should register an execute function");
+
+	const lines = [
+		"# SOUL",
+		"",
+		"## Preferences",
+		"- always use tabs for indentation",
+		"- never use tabs for indentation",
+		...Array.from({ length: 10 }, (_, i) => `- filler preference number ${i}`),
+		"",
+		"## Lessons learned",
+		...Array.from({ length: 4 }, (_, i) => `- filler lesson number ${i}  (2026-01-0${i + 1})`),
+		"",
+	];
+	fs.writeFileSync(homeFile("SOUL.md"), lines.join("\n"));
+
+	const result = await execute!("id", { action: "consolidate" }, undefined, undefined, {} as never);
+	const text = result.content[0].text;
+	assert.ok(text.includes("Preferences: 12"), text);
+	assert.ok(text.includes("Lessons: 4"), text);
+	assert.ok(text.includes("Total: 16"), text);
+	assert.ok(text.includes("Potential contradictions"), text);
+	assert.ok(text.includes("always use tabs"), text);
+});
+
+test("soul: consolidate reports no consolidation needed under threshold", async () => {
+	let execute: ((...args: unknown[]) => Promise<{ content: Array<{ text: string }> }>) | undefined;
+	const stubPi = {
+		on: () => undefined,
+		registerTool: (t: { execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }> }> }) => {
+			execute = t.execute;
+		},
+	};
+	soulDefault(stubPi as never);
+
+	fs.writeFileSync(
+		homeFile("SOUL.md"),
+		["# SOUL", "", "## Preferences", "- a single preference", "", "## Lessons learned", ""].join("\n"),
+	);
+
+	const result = await execute!("id", { action: "consolidate" }, undefined, undefined, {} as never);
+	const text = result.content[0].text;
+	assert.ok(text.includes("no consolidation needed yet"), text);
 });

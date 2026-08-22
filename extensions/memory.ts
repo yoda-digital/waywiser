@@ -10,7 +10,8 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import * as fs from "node:fs";
-import { db_, homeFile, registry_ } from "./utils/state.js";
+import * as path from "node:path";
+import { db_, homeFile, registry_, waywiserHome } from "./utils/state.js";
 import { recentMemories, rememberRow, logMem, appendEpisode, memSettings, setMemSettings, READ_POOL_PREDICATE, type MemSettings } from "./utils/state.js";
 import { runChild } from "./utils/llmcall.js";
 import { applySupersedeDB, listConflictsDB, runConsolidate, formatConsolidateReport } from "./mem-dream.js";
@@ -135,6 +136,61 @@ export async function memAction(db: ReturnType<typeof db_>, action: string, p: R
 			logMem("set", kv);
 			return { text: `memory set ${kv}` };
 		}
+		case "export": {
+			const rows = db
+				.prepare(
+					"SELECT id, type, content, confidence, source, tags, verbatim, " +
+					"supersedes_id, created_at, last_accessed, access_count " +
+					"FROM memories ORDER BY id",
+				)
+				.all() as Array<Record<string, unknown>>;
+			const exportPath = path.join(waywiserHome(), "memory-export.json");
+			fs.writeFileSync(exportPath, JSON.stringify(rows, null, 2));
+			logMem("export", `${rows.length} memories → ${exportPath}`);
+			return { text: `Exported ${rows.length} memories to ${exportPath}` };
+		}
+		case "import": {
+			const importPath = String(
+				p.file ?? path.join(waywiserHome(), "memory-export.json"),
+			);
+			if (!fs.existsSync(importPath)) {
+				return { text: `File not found: ${importPath}`, isErr: true };
+			}
+			let rows: Array<Record<string, unknown>>;
+			try {
+				rows = JSON.parse(fs.readFileSync(importPath, "utf-8"));
+			} catch (e) {
+				return {
+					text: `Invalid JSON in ${importPath}: ${e instanceof Error ? e.message : String(e)}`,
+					isErr: true,
+				};
+			}
+			if (!Array.isArray(rows)) {
+				return { text: "Import file must contain a JSON array", isErr: true };
+			}
+			let imported = 0;
+			let skipped = 0;
+			for (const r of rows) {
+				const content = String(r.content ?? "").trim();
+				if (!content) { skipped++; continue; }
+				// Deduplicate: skip exact content matches
+				const existing = db
+					.prepare("SELECT id FROM memories WHERE content = ? LIMIT 1")
+					.get(content) as { id: number } | undefined;
+				if (existing) { skipped++; continue; }
+				rememberRow(db, {
+					type: String(r.type ?? "fact"),
+					content,
+					confidence: typeof r.confidence === "number" ? r.confidence : 0.9,
+					source: (String(r.source ?? "user") as "user" | "agent" | "external"),
+					tags: String(r.tags ?? ""),
+					sourceSession: "import",
+				});
+				imported++;
+			}
+			logMem("import", `${imported} imported, ${skipped} skipped from ${importPath}`);
+			return { text: `Imported ${imported} memories, skipped ${skipped} (duplicates or empty) from ${importPath}` };
+		}
 		default:
 			return { text: `unknown memory action: ${action}`, isErr: true };
 	}
@@ -173,15 +229,15 @@ export function registerMemory(pi: ExtensionAPI): void {
 		name: "memory",
 		label: "Memory",
 		description:
-			"Persistent cross-session memory. Remember facts/preferences/decisions/lessons, recall with full-text search, forget by id, promote frozen rows, mark supersede, list conflicts, stats, tune settings, consolidate (bounded cleanup pass, dry-run by default).",
+			"Persistent cross-session memory. Remember facts/preferences/decisions/lessons, recall with full-text search, forget by id, promote frozen rows, mark supersede, list conflicts, stats, tune settings, consolidate (bounded cleanup pass, dry-run by default), export/import for data portability.",
 		parameters: Type.Object({
 			action: Type.Union(
 				[
 					Type.Literal("remember"), Type.Literal("recall"), Type.Literal("forget"), Type.Literal("list"),
 					Type.Literal("promote"), Type.Literal("supersede"), Type.Literal("conflicts"), Type.Literal("stats"), Type.Literal("set"),
-					Type.Literal("consolidate"),
+					Type.Literal("consolidate"), Type.Literal("export"), Type.Literal("import"),
 				],
-				{ description: "remember | recall | forget | list | promote | supersede | conflicts | stats | set | consolidate" },
+				{ description: "remember | recall | forget | list | promote | supersede | conflicts | stats | set | consolidate | export | import" },
 			),
 			content: Type.Optional(Type.String({ description: "For remember: what to store" })),
 			type: Type.Optional(
@@ -198,6 +254,7 @@ export function registerMemory(pi: ExtensionAPI): void {
 			drop: Type.Optional(Type.Number({ description: "For supersede: id of the memory to supersede" })),
 			kv: Type.Optional(Type.String({ description: "For set: key=value (auto=true|false, recall=selective|top8|off, gateTimeoutMs=1000..20000)" })),
 			dry_run: Type.Optional(Type.Boolean({ description: "For consolidate: dry-run by default; pass false to apply" })),
+			file: Type.Optional(Type.String({ description: "For import: path to JSON file (default ~/.waywiser/memory-export.json)" })),
 		}),
 		executionMode: "sequential",
 		async execute(_id, p, _signal, _update, _ctx: ExtensionContext) {
