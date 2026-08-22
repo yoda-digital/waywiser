@@ -7,27 +7,58 @@
 
 A personal AI agent built on [pi](https://github.com/earendil-works/pi-coding-agent).
 Extends pi with persistent memory, task delegation, project boards, MCP
-integrations, scheduled jobs, and notifications — all as in-process TypeScript
-extensions. Nothing patches pi's core.
+integrations, scheduled jobs, notifications, and a permission engine — all as
+in-process TypeScript extensions. Nothing patches pi's core.
 
 ## Architecture
 
 ```
 waywiser/
-├── extensions/              ← Core agent (memory, delegation, kanban, etc.)
+├── extensions/
+│   ├── permissions.ts           ← Permission engine (loaded first)
+│   ├── soul.ts                  ← SOUL.md identity persistence
+│   ├── memory.ts                ← Cross-session memory (FTS5 + RecallProvider)
+│   ├── kanban/                  ← Project boards (decomposed into 4 modules)
+│   │   ├── index.ts             ← Extension wiring, commands, tool
+│   │   ├── ops.ts               ← Board/card CRUD operations
+│   │   ├── worker.ts            ← Subagent card workers
+│   │   └── shared.ts            ← Types, constants, DB helpers
+│   ├── kanban-server.ts         ← Localhost HTTP dashboard (token-authenticated)
+│   ├── kanban-html.ts           ← Board HTML/CSS generation
+│   ├── delegate.ts              ← Task delegation via RPC subprocesses
+│   ├── execute-code.ts          ← Programmatic tool calling (vm.createContext sandbox)
+│   ├── cronjob.ts               ← Scheduled jobs with quiet hours
+│   ├── notify.ts                ← Desktop/Telegram/webhook notifications
+│   ├── mcp.ts                   ← MCP server loader (JSON-RPC 2.0 stdio)
+│   ├── web.ts                   ← Web search + extract (SSRF-guarded)
+│   ├── commands.ts              ← Slash commands, goals, structured traces
+│   ├── skills-manage.ts         ← Playbook catalog with tier badges
+│   ├── todo-compat.ts           ← /todo → kanban shim
+│   ├── clarify.ts               ← User interaction tool
+│   ├── soul.ts                  ← Identity persistence
+│   └── utils/
+│       ├── state.ts             ← Shared DB, registry, config
+│       ├── rpc.ts               ← Pi RPC client + warm pool
+│       ├── llmcall.ts           ← One-shot LLM child (queue-based)
+│       ├── prompt-budget.ts     ← Priority-based prompt injection manager
+│       ├── trace.ts             ← Structured trace events (TraceEvent)
+│       └── url-guard.ts         ← SSRF protection (private IP blocking)
 ├── skills/
-│   ├── waywiser/            ← Core operating skill (always loaded)
-│   └── pa-*/                ← 18 PA domain skills (bootstrapped to ~/.waywiser/skills/)
-├── bin/waywiser             ← Launcher (auto-discovers plugins, bootstraps PA skills)
-├── config/                  ← Default configs
+│   ├── waywiser/                ← Core operating skill (always loaded)
+│   └── pa-*/                    ← 19 PA playbooks (bootstrapped to ~/.waywiser/skills/)
+├── bin/waywiser                 ← Launcher (auto-discovers plugins, bootstraps playbooks)
+├── config/                      ← Default configs
+├── test/
+│   ├── *.test.ts                ← Unit tests (166 tests)
+│   └── e2e/                     ← End-to-end evals (model-gated, 6 tests)
 │
-└── plugins/                 ← Vendor plugins (auto-loaded by launcher)
-    └── brain/               ← Self-learning brain plugin
-        ├── extensions/      ← Pi extension (18 modules)
-        ├── skills/          ← Brain skill
-        ├── test/            ← 315 tests
-        └── plugins/         ← Brain's own sub-plugins
-            └── obsidian/    ← Obsidian integration (plugin-in-plugin)
+└── plugins/                     ← Vendor plugins (auto-loaded by launcher)
+    └── brain/                   ← Persistent memory with procedural preferences
+        ├── extensions/          ← Pi extension (18 modules)
+        ├── skills/              ← Brain skill
+        ├── test/                ← 332 tests
+        └── plugins/
+            └── obsidian/        ← Obsidian integration (plugin-in-plugin)
 ```
 
 ## Install from Source
@@ -36,7 +67,8 @@ Node >= 22.5, `pi` on PATH.
 
 ### Level 1: Waywiser Core
 
-The base agent — memory, delegation, kanban, MCP, cron, notifications.
+The base agent — memory, delegation, kanban, MCP, cron, notifications,
+permissions, and structured observability.
 
 ```bash
 git clone git@github.com:yoda-digital/waywiser.git
@@ -46,17 +78,26 @@ bin/waywiser
 ```
 
 **What you get:**
-- Cross-session memory (FTS5)
-- Task delegation (3 concurrent subagents)
-- Kanban boards (web dashboard + TUI + markdown)
+- Cross-session memory (FTS5) with export/import and consolidation
+- Task delegation (3 concurrent subagents, depth-capped at 2)
+- Kanban boards (authenticated web dashboard + TUI + markdown)
 - MCP integrations (Gmail, Calendar, Notion, etc.)
-- Scheduled jobs (cron + one-shot timers)
-- Desktop/Telegram/webhook notifications
-- SOUL identity persistence
+- Scheduled jobs (cron + one-shot timers, auto-pause on repeated failures)
+- Desktop/Telegram/webhook notifications (shell-injection-proof)
+- SOUL.md identity persistence with consolidation
+- Permission engine (8-class risk taxonomy, configurable policy)
+- Planning mode (`/plan` — blocks writes while allowing reads)
+- Session budgets (200 tool calls, 10 subagent spawns per session)
+- Structured trace events with `/trace export`
+- Goal budgets (`/goal --max-steps 30 --deadline 2026-09-01`)
+- SSRF protection on web tools (private IP blocking)
+- Prompt cache telemetry (`/waywiser status`)
 
 ### Level 2: Waywiser + Brain Plugin
 
-Adds self-learning, procedural memory, auto-evolution of skills, and an Obsidian-compatible vault. The launcher auto-discovers Brain from `plugins/brain/`.
+Adds persistent memory with procedural preferences, reciprocal rank fusion
+recall, auto-evolution of skills, and an Obsidian-compatible vault. The
+launcher auto-discovers Brain from `plugins/brain/`.
 
 ```bash
 git clone git@github.com:yoda-digital/waywiser.git
@@ -65,14 +106,16 @@ npm install
 bin/waywiser    # Brain loads automatically
 ```
 
-No extra steps — `bin/waywiser` scans `plugins/` and loads everything it finds. On first run, it creates `~/.waywiser/brain.json` from the example config.
+No extra steps — `bin/waywiser` scans `plugins/` and loads everything it finds.
+On first run, it creates `~/.waywiser/brain.json` from the example config.
 
 **What Brain adds:**
-- Self-learning at `agent_settled` boundaries (not mid-turn)
-- Reciprocal rank fusion recall (lexical + scope + usage + confidence + recency)
-- Procedural memory ("when X, prefer Y over Z") with evidence tracking
+- Learning at `agent_settled` boundaries (not mid-turn)
+- Reciprocal rank fusion recall (lexical + scope + usage + confidence + recency + semantic)
+- Procedural preferences ("when X, prefer Y over Z") with evidence tracking
 - Auto-evolution: mature procedures → candidate skills → competitive evaluation → promotion
 - Obsidian-native vault sync (wikilinks, Properties, callouts, mermaid diagrams, MOCs, canvas)
+- RecallProvider integration (Brain's RRF recall replaces core FTS when loaded)
 - `/brain status`, `/brain sync`, `/brain consolidate`, `/brain evolve *` commands
 - `evolve` tool for evolution inspection
 
@@ -83,7 +126,8 @@ No extra steps — `bin/waywiser` scans `plugins/` and loads everything it finds
 
 ### Level 3: Waywiser + Brain + Obsidian Plugin
 
-The Obsidian plugin is a plugin OF Brain (not of Waywiser directly). It lives inside Brain's distribution at `plugins/brain/plugins/obsidian/`.
+The Obsidian plugin is a plugin OF Brain (not of Waywiser directly). It lives
+inside Brain's distribution at `plugins/brain/plugins/obsidian/`.
 
 ```bash
 git clone git@github.com:yoda-digital/waywiser.git
@@ -131,35 +175,50 @@ Then enable "Waywiser Brain" in Obsidian Settings → Community Plugins.
 | Feature | Core | + Brain | + Obsidian |
 |---------|:----:|:-------:|:----------:|
 | Cross-session memory | ✅ | ✅ | ✅ |
+| Memory export/import | ✅ | ✅ | ✅ |
 | Delegation & subagents | ✅ | ✅ | ✅ |
-| Kanban boards | ✅ | ✅ | ✅ |
+| Kanban boards (authenticated) | ✅ | ✅ | ✅ |
 | MCP integrations | ✅ | ✅ | ✅ |
-| Cron jobs | ✅ | ✅ | ✅ |
+| Cron jobs (auto-pause) | ✅ | ✅ | ✅ |
 | Notifications | ✅ | ✅ | ✅ |
-| SOUL identity | ✅ | ✅ | ✅ |
-| Self-learning (agent_settled) | — | ✅ | ✅ |
-| Procedural memory | — | ✅ | ✅ |
+| SOUL identity + consolidation | ✅ | ✅ | ✅ |
+| Permission engine | ✅ | ✅ | ✅ |
+| Planning mode | ✅ | ✅ | ✅ |
+| Session budgets | ✅ | ✅ | ✅ |
+| Structured traces | ✅ | ✅ | ✅ |
+| Goal budgets | ✅ | ✅ | ✅ |
+| SSRF protection | ✅ | ✅ | ✅ |
+| Prompt cache telemetry | ✅ | ✅ | ✅ |
+| RRF recall (5+ signals) | — | ✅ | ✅ |
+| Procedural preferences | — | ✅ | ✅ |
 | Skill auto-evolution | — | ✅ | ✅ |
 | Vault markdown sync | — | ✅ | ✅ |
-| Wikilinks + mermaid | — | ✅ | ✅ |
 | `/brain` commands | — | ✅ | ✅ |
 | Dashboard sidebar | — | — | ✅ |
 | Command palette (7 cmds) | — | — | ✅ |
 | Real-time DB refresh | — | — | ✅ |
 | Graph view coloring | — | — | ✅ |
 | Confidence bars | — | — | ✅ |
-| PA skills (18 domains) | ✅ | ✅ | ✅ |
+| PA playbooks (19 domains) | ✅ | ✅ | ✅ |
 
-## PA Skills (Personal Assistant)
+## Playbooks (Personal Assistant)
 
-18 domain-specific skills that transform Waywiser from a coding agent into a
-full personal assistant. Each skill embeds a professional methodology (GTD,
-Minto Pyramid, OODA Loop, DMAIC, etc.), few-shot examples for Qwen 3 8B
-accuracy, and tool integration with Waywiser's native toolset.
+19 domain-specific playbooks that extend Waywiser into a full personal
+assistant. Each playbook embeds a professional methodology (GTD, Minto Pyramid,
+OODA Loop, DMAIC, etc.), few-shot examples calibrated for the target model, and
+tool integration with Waywiser's native toolset.
 
-Skills are installed to `~/.waywiser/skills/` on first run and discovered via
-`skills_list`. They load on-demand via `skill_view` (progressive disclosure —
-only descriptions live in context until activated).
+Playbooks are installed to `~/.waywiser/skills/` on first run and discovered
+via `skills_list`. They load on-demand via `skill_view` (progressive
+disclosure — only descriptions live in context until activated).
+
+Each playbook carries a quality tier based on empirical testing:
+
+| Badge | Tier | Meaning |
+|-------|------|---------|
+| ✅ | **verified** | Tested with ≥60% accuracy. Few-shot examples tuned. |
+| ⚠️ | **experimental** | Written with methodology but not yet empirically validated. |
+| 🔬 | **untested** | Domain-expert playbook awaiting evaluation. |
 
 ### First-run setup
 
@@ -174,35 +233,19 @@ not, the first PA request triggers the `pa-onboard` setup wizard which:
 6. Creates a `pa-overview` kanban board
 7. Writes an onboarding marker to memory (won't repeat)
 
-A lightweight PA skill catalog (~2KB) is injected into the system prompt at
-every session start so the model knows which skill to activate for each request.
+### Tier assignments
 
-### Tiers
+| Tier | Playbooks |
+|------|-----------|
+| ✅ **Verified** | `pa-time-manage` `pa-doc-writer` `pa-stakeholder-comm` `pa-research` `pa-lifestyle` `pa-onboard` |
+| ⚠️ **Experimental** | `pa-project-coord` `pa-event-manage` `pa-finance` `pa-travel` `pa-procurement` `pa-decision-support` `pa-process-improve` `pa-tech-ops` `pa-records` |
+| 🔬 **Untested** | `pa-hr-support` `pa-compliance` `pa-governance` `pa-protocol` |
 
-| Tier | Skills | Use case |
-|------|--------|----------|
-| **1 — Core daily** | `pa-time-manage` `pa-doc-writer` `pa-stakeholder-comm` `pa-research` | Scheduling, writing, communication, research |
-| **2 — Weekly ops** | `pa-project-coord` `pa-event-manage` `pa-finance` `pa-lifestyle` | Projects, events, budgets, concierge |
-| **3 — Specialized** | `pa-travel` `pa-procurement` `pa-decision-support` `pa-process-improve` | Travel, vendors, decisions, optimization |
-| **4 — On-demand** | `pa-tech-ops` `pa-records` `pa-hr-support` `pa-compliance` `pa-governance` `pa-protocol` | IT, records, HR, compliance, governance, etiquette |
-
-### Clusters
-
-```
-A. Communication & Writing    → pa-stakeholder-comm, pa-doc-writer, pa-protocol
-B. Time, Tasks & Projects     → pa-time-manage, pa-project-coord, pa-event-manage
-C. Information & Knowledge    → pa-tech-ops, pa-records, pa-research
-D. Operations & Admin         → pa-finance, pa-travel, pa-hr-support,
-                                 pa-process-improve, pa-procurement
-E. Governance & Strategy      → pa-compliance, pa-governance, pa-decision-support
-F. Lifestyle Management       → pa-lifestyle
-```
-
-### Each skill contains
+### Each playbook contains
 
 - **Role prompt** — domain-specific persona
 - **Methodology** — professional framework (BoT reasoning template)
-- **Few-shot examples** — 2 per skill for 8B model accuracy (15% → 66%)
+- **Few-shot examples** — 2 per playbook for model accuracy
 - **Tool integration** — mapped to Waywiser tools (memory, kanban, delegate_task, etc.)
 - **Memory-first protocol** — recall preferences before every task
 - **Thinking level** — calibrated per domain complexity (low → max)
@@ -211,6 +254,29 @@ F. Lifestyle Management       → pa-lifestyle
 Six cross-cutting meta-skills (Emotional Intelligence, Discretion, Anticipatory
 Thinking, Adaptability, Multi-tasking, Continuous Learning) are embedded in
 SOUL.md and apply across all domains.
+
+## Security
+
+Waywiser includes a layered security model:
+
+- **Permission engine** — 8-class risk taxonomy (read_only, write_local,
+  process_exec, communication, network, scheduling, mcp_read, mcp_write).
+  Configurable policy per class: allow, block, ask_user, log_only.
+  Manage via `/permissions`.
+- **Planning mode** — `/plan` blocks all write/send/spawn tools while
+  allowing reads. `/plan approve` re-enables writes.
+- **Session budgets** — max 200 tool calls and 10 subagent spawns per
+  session (configurable via env vars or config.json).
+- **Sandbox** — `execute_code` uses `vm.createContext(Object.create(null))`
+  with a 5-second timeout. Optional
+  [gondolin](https://github.com/earendil-works/gondolin) micro-VM backend
+  for full isolation (`npm install @earendil-works/gondolin`).
+- **SSRF protection** — `web_extract` blocks private, link-local, and
+  localhost URLs.
+- **Kanban auth** — localhost dashboard requires a per-session Bearer token.
+  No CORS headers (same-origin only).
+- **Notification safety** — `spawn()` with argument arrays (no shell
+  interpolation).
 
 ## Plugin System
 
@@ -235,42 +301,80 @@ To disable a plugin, rename or remove its directory from `plugins/`.
 Cross-session memory with full-text search (SQLite FTS5). Waywiser remembers
 your preferences, project context, and lessons across sessions.
 
-- Automatic writes: a turn-end gate extracts durable facts
-- Selective recall: BM25-ranked relevant memories injected per turn
-- Consolidation: dedup, decay, merge — run `/memory consolidate`
-- Full audit trail in `memlog`; readable exports in `MEMORY.md`
+- **Automatic writes:** a turn-end gate extracts durable facts
+- **Selective recall:** BM25-ranked relevant memories injected per turn
+- **RecallProvider:** when Brain is loaded, its RRF recall transparently
+  replaces core FTS (no dynamic imports, no second DB connection)
+- **Consolidation:** dedup, decay, merge — run `/memory consolidate`
+- **Export/import:** `memory action=export` for JSON backup; `action=import`
+  for restore/merge with deduplication
+- **External content freezing:** web-sourced data frozen at low confidence
+  until user promotes it
+- **Full audit trail** in `memlog`; readable exports in `MEMORY.md`
 
 ### Kanban Board
 
 Project boards backed by SQLite with three views:
 
-- **Web dashboard** at `http://localhost:7749/` — drag-and-drop, real-time SSE
+- **Web dashboard** at `http://localhost:7749/` — drag-and-drop, real-time
+  SSE, session-token authenticated
 - **Markdown** at `~/.waywiser/boards/` — readable offline
 - **TUI** — `/kanban` in terminal
 
 ### Delegation
 
 Spawn isolated pi children for research, code tasks, or anything that would
-flood your main context. Up to 3 concurrent subagents.
+flood your main context. Up to 3 concurrent subagents. Warm RPC pool with
+proper `session_shutdown` cleanup.
 
 ### MCP Integrations
 
 Connect any MCP server — Gmail, Calendar, Notion, filesystem. Config lives in
-`~/.waywiser/mcp.json`. Servers spawn lazily and reconnect on failure.
+`~/.waywiser/mcp.json`. Servers spawn lazily and reconnect on failure. MCP tool
+calls are classified by the permission engine (read vs write heuristic).
 
 ### Notifications
 
 Desktop (`notify-send`), Telegram bot, or webhook. Quiet hours respected.
+Rate-limited (10/hour default). Shell-injection-proof (`spawn()` with argument
+arrays, no shell interpolation).
 
 ### Scheduled Jobs
 
 Cron expressions or one-shot `@ISO` timestamps. Session-mode timers and
-system-mode `.cron` files.
+system-mode `.cron` files. Auto-pause after 5 consecutive delivery failures.
 
 ### Identity
 
 `SOUL.md` persists across restarts. The agent appends preferences and lessons
-but never rewrites what's there.
+but never rewrites what's there (prompt-cache stability). `soul action=consolidate`
+reports counts and flags potential contradictions for manual review.
+
+### Observability
+
+- **Structured trace events:** every tool call logged as a typed `TraceEvent`
+  (kind, tool, action, risk, latency, status)
+- **Prompt cache telemetry:** SHA-256 prefix tracking, hit/miss stats
+- **Goal budgets:** `/goal --max-steps 30 --deadline 2026-09-01 --done "condition"`
+- **Trace export:** `/trace export` writes JSONL to `~/.waywiser/trace-export.jsonl`
+- **Session summary:** tool call count, unique tools, errors — logged at shutdown
+
+### Prompt Management
+
+System-prompt injections are coordinated through a priority-based budget manager:
+
+| Priority | Block | Cacheable? |
+|----------|-------|------------|
+| 0 | SOUL.md identity | ✅ Session-stable |
+| 1 | Memory digest | ✅ Session-stable |
+| 2 | Active goals | ❌ Per-mutation |
+| 3 | Memory recall / Brain context | ❌ Per-turn |
+| 4 | Playbook catalog | ✅ Session-stable |
+| 5 | Kanban open cards | ❌ Per-mutation |
+| 6 | Permission reminders | ❌ Per-turn |
+
+Configurable budget via `~/.waywiser/config.json` → `promptBudget.maxChars`
+(default 12,000).
 
 ## Configuration
 
@@ -285,20 +389,25 @@ All config lives in `~/.waywiser/`:
 | `mcp.json` | MCP server configuration |
 | `notify.json` | Notification channel setup |
 | `mem.json` | Memory subsystem tuning |
+| `permissions.json` | Permission policy (defaults/overrides/allowlist) |
+| `config.json` | Global config (prompt budget, execute_code backend) |
 | `brain/` | Brain vault (Obsidian-compatible markdown) |
 | `skills/` | Evolved skills (active/candidates/retired) |
 
 ## Tests
 
 ```bash
-# Core tests
-npm test                                           # 54 tests
+# Core + security + prompt-budget tests
+npm test                                           # 172 tests (166 pass, 6 e2e skip)
 
 # Brain plugin tests
-cd plugins/brain && node --test test/*.test.ts      # 315 tests
+npm run test:brain                                 # 332 tests
 
 # Everything
-npm test && cd plugins/brain && node --test test/*.test.ts  # 369 total
+npm run test:all                                   # 504 total
+
+# End-to-end evals (requires a running model)
+WAYWISER_E2E_MODEL=qwen3:latest npm run test:e2e   # 6 tests
 ```
 
 ## License
