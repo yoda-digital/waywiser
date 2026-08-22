@@ -14,6 +14,7 @@
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
+import { createContext, Script } from "node:vm";
 import { createPiRpcClient, createPiRpcPool, type PiRpcClient } from "./utils/rpc.js";
 
 // Small warm pool for the execute_code lane (fresh per cwd; heavy
@@ -25,6 +26,36 @@ const execPool = createPiRpcPool({
 	spawn: (lane, cwd) => createPiRpcClient({ cwd, args: EXECUTE_CODE_ARGS }),
 });
 if (typeof process.on === "function") process.on("exit", () => execPool.shutdownAll());
+
+/**
+ * Parse the model's JavaScript snippet to extract the toolCalls array.
+ * Runs in a completely empty V8 context (no process, no require, no
+ * globalThis, no constructor chain). 5s timeout prevents infinite loops.
+ * Result is deep-cloned via JSON round-trip to sever all sandbox refs.
+ */
+export function parseToolCalls(code: string): Array<{ tool: string; args: Record<string, unknown> }> {
+	const sandbox = createContext(Object.create(null));
+	const script = new Script(
+		`"use strict";\n${code}\ntoolCalls;`,
+		{ filename: "execute_code_user_script.js" },
+	);
+	const raw = script.runInContext(sandbox, { timeout: 5_000 });
+	if (!Array.isArray(raw) || raw.length === 0) {
+		throw new Error("script must assign a non-empty `toolCalls` array");
+	}
+	const cloned: unknown = JSON.parse(JSON.stringify(raw));
+	const calls = cloned as Array<Record<string, unknown>>;
+	for (let i = 0; i < calls.length; i++) {
+		const c = calls[i];
+		if (typeof c.tool !== "string" || !c.tool) {
+			throw new Error(`toolCalls[${i}].tool must be a non-empty string`);
+		}
+		if (typeof c.args !== "object" || c.args === null || Array.isArray(c.args)) {
+			throw new Error(`toolCalls[${i}].args must be a plain object`);
+		}
+	}
+	return calls as Array<{ tool: string; args: Record<string, unknown> }>;
+}
 
 export default function executeCode(pi: ExtensionAPI): void {
 	pi.registerTool({
@@ -41,27 +72,22 @@ export default function executeCode(pi: ExtensionAPI): void {
 		}),
 		executionMode: "sequential",
 		async execute(_id, p, signal, _update, ctx: ExtensionContext) {
-			// 1. Parse the script's toolCalls without a shell: extract with a tiny repl.
+			// 1. Parse phase: extract toolCalls from user script (vm-sandboxed)
 			let toolCalls: Array<{ tool: string; args: Record<string, unknown> }>;
 			try {
-				// eslint-disable-next-line @typescript-eslint/no-implied-eval
-				const fn = new Function(`
-					const module = { exports: {} };
-					const require = undefined;
-					const process = undefined;
-					${p.code}
-					return toolCalls;
-				`) as () => unknown;
-				const calls = fn();
-				if (!Array.isArray(calls) || calls.length === 0) {
-					return mk("execute_code: script must define a non-empty `toolCalls` array.", true);
-				}
-				toolCalls = calls as Array<{ tool: string; args: Record<string, unknown> }>;
+				toolCalls = parseToolCalls(p.code);
 			} catch (e) {
-				return mk(`execute_code: script failed to evaluate: ${String(e)}`, true);
+				const msg = e instanceof Error ? e.message : String(e);
+				if (msg.includes("Script execution timed out")) {
+					return mk("execute_code: script timed out after 5s (infinite loop?)", true);
+				}
+				return mk(`execute_code: script failed to parse: ${msg}`, true);
 			}
 			if (toolCalls.length > 25) {
-				return mk(`execute_code: refusing ${toolCalls.length} calls (max 25 per call). Split into multiple execute_code calls.`, true);
+				return mk(
+					`execute_code: refusing ${toolCalls.length} calls (max 25). Split into multiple execute_code calls.`,
+					true,
+				);
 			}
 
 			// 2. Acquire an isolated rpc child from the execute_code lane.
