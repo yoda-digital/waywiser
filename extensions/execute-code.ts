@@ -15,7 +15,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { createContext, Script } from "node:vm";
+import * as path from "node:path";
 import { createPiRpcClient, createPiRpcPool, type PiRpcClient } from "./utils/rpc.js";
+import { waywiserHome, readJSON } from "./utils/state.js";
 
 // Small warm pool for the execute_code lane (fresh per cwd; heavy
 // new_session reset on reuse keeps the contract of "isolated agent").
@@ -57,6 +59,68 @@ export function parseToolCalls(code: string): Array<{ tool: string; args: Record
 	return calls as Array<{ tool: string; args: Record<string, unknown> }>;
 }
 
+interface ExecuteCodeConfig {
+	backend: "host" | "gondolin";
+	gondolinTimeout: number;
+	gondolinAllowedHosts: string[];
+}
+
+function getExecuteCodeConfig(): ExecuteCodeConfig {
+	const file = path.join(waywiserHome(), "config.json");
+	const full = readJSON<Record<string, unknown>>(file, {});
+	const raw = (full.executeCode ?? {}) as Partial<ExecuteCodeConfig>;
+	return {
+		backend: raw.backend === "gondolin" ? "gondolin" : "host",
+		gondolinTimeout: typeof raw.gondolinTimeout === "number" ? raw.gondolinTimeout : 180_000,
+		gondolinAllowedHosts: Array.isArray(raw.gondolinAllowedHosts) ? raw.gondolinAllowedHosts : [],
+	};
+}
+
+async function executeInGondolin(
+	toolCalls: Array<{ tool: string; args: Record<string, unknown> }>,
+	cwd: string,
+	timeout: number,
+): Promise<string> {
+	const { VM, createHttpHooks } = await import("@earendil-works/gondolin");
+	const config = getExecuteCodeConfig();
+	const { httpHooks, env } = createHttpHooks({
+		allowedHosts: config.gondolinAllowedHosts,
+		blockInternalRanges: true,
+		secrets: {},
+	});
+	const vm = await VM.create({ httpHooks, env });
+	try {
+		const callList = toolCalls
+			.map((c, i) => `${i + 1}. ${c.tool}(${JSON.stringify(c.args).slice(0, 2000)})`)
+			.join("\n");
+		const prompt = [
+			"Execute EXACTLY these tool calls, in order, with exactly these arguments.",
+			"No commentary between calls. Execute every numbered call yourself.",
+			"When all finish, reply: one line per call, prefixed with its number, marked ok or FAILED(reason).",
+			"Then a final line starting with 'SUMMARY: '.",
+			"",
+			"Tool calls:",
+			callList,
+		].join("\n");
+		const result = await vm.exec(
+			["pi", "-p", prompt, "--no-session", "--no-extensions",
+				"--no-context-files", "--no-skills", "--no-prompt-templates", "--no-themes"],
+			{ signal: AbortSignal.timeout(timeout) },
+		);
+		if (!result.ok) {
+			return `execute_code (gondolin): pi exited ${result.exitCode}\nstderr: ${result.stderr.slice(0, 500)}`;
+		}
+		const text = result.stdout.trim() || "(no output)";
+		const numbered = text.split(/\n/).filter((l: string) => /^\s*\d+\./.test(l)).length;
+		const warned = numbered !== toolCalls.length
+			? `WARNING: expected ${toolCalls.length} numbered result lines, child reported ${numbered}.\n\n`
+			: "";
+		return `${warned}executed ${toolCalls.length} call(s) in gondolin VM.\n\n${text}`;
+	} finally {
+		await vm.close();
+	}
+}
+
 export default function executeCode(pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: "execute_code",
@@ -90,6 +154,32 @@ export default function executeCode(pi: ExtensionAPI): void {
 				);
 			}
 
+			const timeout = p.timeout ?? 180_000;
+			const config = getExecuteCodeConfig();
+
+			if (config.backend === "gondolin") {
+				try {
+					const result = await executeInGondolin(toolCalls, ctx.cwd, timeout);
+					return mk(result);
+				} catch (e) {
+					const msg = e instanceof Error ? e.message : String(e);
+					const code = e instanceof Error ? (e as NodeJS.ErrnoException).code : undefined;
+					const notInstalled =
+						code === "ERR_MODULE_NOT_FOUND" ||
+						msg.includes("Cannot find module") ||
+						msg.includes("Cannot find package") ||
+						msg.includes("ERR_MODULE_NOT_FOUND");
+					if (notInstalled) {
+						return mk(
+							"execute_code: gondolin backend configured but @earendil-works/gondolin is not installed. " +
+							"Run `npm install @earendil-works/gondolin` or set executeCode.backend to 'host' in ~/.waywiser/config.json.",
+							true,
+						);
+					}
+					return mk(`execute_code (gondolin): ${msg}`, true);
+				}
+			}
+
 			// 2. Acquire an isolated rpc child from the execute_code lane.
 			let state: PiRpcClient;
 			try {
@@ -105,7 +195,6 @@ export default function executeCode(pi: ExtensionAPI): void {
 					`When all finish, reply in at most 8 lines: one line per call, prefixed with its number, marked ok or FAILED(reason); ` +
 					`then a final line starting with "SUMMARY: ".\n\n` +
 					`Tool calls:\n${list}`;
-				const timeout = p.timeout ?? 180_000;
 				const per = Math.floor(timeout / Math.max(toolCalls.length, 2));
 				const t0 = Date.now();
 				const res0 = await state.command({ type: "prompt", message: prompt }, Math.max(5000, Math.min(per, 15000)));
