@@ -28,11 +28,71 @@ interface NotifyChannelWebhook {
 	url?: string;
 	headers?: Record<string, string>;
 }
+interface NotifyChannelTermux {
+	enabled: boolean;
+	appTitle?: string;
+	id?: number;
+	/** Maps urgency to physical signal strength (--priority/--sound/--vibrate/--icon/--channel/TTS). */
+	escalate?: boolean;
+	soundOnCritical?: boolean;
+	vibratePattern?: string;
+	criticalChannel?: string;
+	ttsOnCritical?: boolean;
+	/** Route by urgency to a distinct Android notification channel (created by mobile.channels.ts). */
+	channelByUrgency?: { critical?: string; high?: string; normal?: string; low?: string };
+	/** When true, wrap every notification with a "reply" Direct-Reply button (spec 08 §4). */
+	interactive?: boolean;
+	/** Absolute path to the `waywiser-reply` binary (populated by /mobile setup). */
+	replyBin?: string;
+	/** Absolute path to the `waywiser-do` binary. */
+	doBin?: string;
+}
+
+/**
+ * A per-notification action button. `label` shows on the button; `intent`
+ * describes what should happen when it's tapped. The mobile extension issues
+ * a one-shot inbox token and passes it to the fixed-shape shell command that
+ * Android runs — user data is never interpolated into the action string.
+ * `directReply` turns the button into an Android Direct-Reply input.
+ */
+export interface NotifyAction {
+	label: string;
+	intent: NotifyIntent;
+	directReply?: boolean;
+}
+
+export type NotifyIntent =
+	| { kind: "prompt"; prompt: string; label?: string }
+	| { kind: "snooze"; minutes: number; original: { title: string; body: string } }
+	| { kind: "dismiss" }
+	| { kind: "approve"; requestId: string; requiresBiometric?: boolean }
+	| { kind: "deny"; requestId: string }
+	| { kind: "reply"; prompt: string }
+	| { kind: "custom"; handler: string; payload?: Record<string, unknown> };
+
+/**
+ * Optional callback for a notification target. The mobile extension registers
+ * its Termux argv builder here; when absent, notifications remain plain
+ * (backward-compatible with prior notify.ts consumers). All action strings
+ * returned by the builder are treated as opaque shell fragments — spec 08
+ * §12 requires they contain only shell-safe tokens issued by the caller.
+ */
+export interface TermuxActionBuilder {
+	buildArgs(actions: NotifyAction[], defaultTTLMs: number): string[];
+	buildOnDelete?(intent?: NotifyIntent): string | undefined;
+}
+
+let termuxActionBuilder: TermuxActionBuilder | undefined;
+
+export function registerTermuxActionBuilder(b: TermuxActionBuilder | undefined): void {
+	termuxActionBuilder = b;
+}
 interface NotifyConfig {
 	channels: {
 		desktop?: NotifyChannelDesktop;
 		telegram?: NotifyChannelTelegram;
 		webhook?: NotifyChannelWebhook;
+		termux?: NotifyChannelTermux;
 	};
 	default: string[];
 	rateLimit?: number;
@@ -152,6 +212,77 @@ async function sendTelegram(token: string, chatId: string, title: string, body: 
 	}
 }
 
+/** Termux:API — system notification (requires the Termux:API app enabled).
+ * When escalate is on (default), urgency maps to real physical signal:
+ * critical -> priority max + sound + vibrate pattern + error icon + optional TTS,
+ * normal/high -> priority high; low -> priority low. Stable per-urgency ids
+ * keep the notification shade from accumulating duplicates.
+ *
+ * When `actions` are provided AND a TermuxActionBuilder is registered (mobile
+ * extension), the notification becomes interactive: button-actions run fixed-
+ * shape shell commands that redeem one-shot inbox tokens. Spec 08 §4/§12.
+ */
+async function sendTermux(
+	title: string,
+	body: string,
+	urgency: string,
+	appTitle?: string,
+	cfg?: NotifyChannelTermux,
+	actions?: NotifyAction[],
+	actionTTLMs?: number,
+): Promise<{ ok: boolean; error?: string }> {
+	const escalate = cfg?.escalate !== false;
+	const args = ["--title", appTitle && appTitle.trim() ? appTitle : title, "--content", body];
+	const id = cfg?.id !== undefined ? String(cfg.id) : `way-${urgency}`;
+	if (cfg?.id === undefined || escalate) args.push("--id", id);
+	if (escalate) {
+		if (urgency === "critical") {
+			args.push("--priority", "max", "--icon", "error");
+			if (cfg?.soundOnCritical !== false) args.push("--sound");
+			if (cfg?.vibratePattern) args.push("--vibrate", cfg.vibratePattern);
+			else args.push("--vibrate", "300,150,300,150,600");
+		} else if (urgency === "low") {
+			args.push("--priority", "low");
+		} else {
+			args.push("--priority", "high", "--icon", "important_suggestions");
+		}
+		if (urgency === "critical" && cfg?.ttsOnCritical !== false) {
+			const tts = spawn("termux-tts-speak", [title], { stdio: "ignore" });
+			tts.on("error", () => undefined); // no engine/no-op: fine
+		}
+	}
+	// Channel routing (spec 08 §11): urgency-specific channel first, legacy
+	// criticalChannel fallback for backwards compatibility.
+	const chan = cfg?.channelByUrgency?.[urgency as keyof NonNullable<NotifyChannelTermux["channelByUrgency"]>];
+	if (chan) args.push("--channel", chan);
+	else if (urgency === "critical" && cfg?.criticalChannel) args.push("--channel", cfg.criticalChannel);
+
+	// Interactive layer (spec 08 §4). When the mobile extension has registered
+	// its builder AND actions are provided (or interactive=true), append
+	// --button*-action / --action / --on-delete flags. When no builder is
+	// registered, actions are silently ignored — desktop/CI keep working.
+	if (termuxActionBuilder) {
+		const effectiveActions = actions ?? [];
+		if (effectiveActions.length || cfg?.interactive) {
+			try {
+				const extraArgs = termuxActionBuilder.buildArgs(effectiveActions, actionTTLMs ?? 3_600_000);
+				args.push(...extraArgs);
+			} catch (e) {
+				// Never let action wiring block the notification itself.
+				process.stderr.write(`waywiser/notify: action builder failed: ${String(e)}\n`);
+			}
+		}
+	}
+
+	return new Promise((resolve) => {
+		const child = spawn("termux-notification", args, { stdio: "ignore" });
+		child.on("error", (err) => resolve({ ok: false, error: err.message }));
+		child.on("close", (code) =>
+			resolve(code === 0 ? { ok: true } : { ok: false, error: `exit code ${code}` }),
+		);
+	});
+}
+
 async function sendWebhook(url: string, headers: Record<string, string> | undefined, title: string, body: string): Promise<{ ok: boolean; error?: string }> {
 	try {
 		const res = await fetch(url, {
@@ -180,7 +311,14 @@ export async function sendNotification(
 	title: string,
 	body: string,
 	channels?: string[],
-	opts?: { bypassQuiet?: boolean },
+	opts?: {
+		bypassQuiet?: boolean;
+		urgency?: string;
+		/** Interactive buttons — honored only by channels that support them (termux for now). */
+		actions?: NotifyAction[];
+		/** Override the default 1h token TTL for this notification's actions. */
+		actionTTLMs?: number;
+	},
 ): Promise<NotifyResult> {
 	const config = readNotifyConfig();
 
@@ -200,6 +338,16 @@ export async function sendNotification(
 			result = await sendTelegram(config.channels.telegram.token, config.channels.telegram.chatId, title, body);
 		} else if (ch === "webhook" && config.channels.webhook?.enabled && config.channels.webhook.url) {
 			result = await sendWebhook(config.channels.webhook.url, config.channels.webhook.headers, title, body);
+		} else if (ch === "termux" && config.channels.termux?.enabled) {
+			result = await sendTermux(
+				title,
+				body,
+				String(opts?.urgency ?? "normal"),
+				config.channels.termux.appTitle,
+				config.channels.termux,
+				opts?.actions,
+				opts?.actionTTLMs,
+			);
 		} else {
 			failed.push(`${ch} (not configured/enabled)`);
 			continue;
@@ -223,13 +371,13 @@ export default function notify(pi: ExtensionAPI): void {
 		name: "notify",
 		label: "Notify",
 		description:
-			"Send a notification to the user via configured channels (desktop, Telegram, webhook). Use this to deliver reminders, alerts, or results that need attention. Respects quiet hours (DND) unless urgency=critical.",
+			"Send a notification to the user via configured channels (desktop, Telegram, webhook, termux). Use this to deliver reminders, alerts, or results that need attention. Respects quiet hours (DND) unless urgency=critical.",
 		parameters: Type.Object({
 			title: Type.String({ description: "Short notification title" }),
 			body: Type.String({ description: "Notification body text" }),
 			channels: Type.Optional(
 				Type.Array(Type.String(), {
-					description: "Specific channel names to use: 'desktop', 'telegram', 'webhook' (default: configured defaults)",
+					description: "Specific channel names to use: 'desktop', 'telegram', 'webhook', 'termux' (default: configured defaults)",
 				}),
 			),
 			urgency: Type.Optional(
@@ -242,6 +390,7 @@ export default function notify(pi: ExtensionAPI): void {
 		async execute(_id, params) {
 			const result = await sendNotification(params.title, params.body, params.channels, {
 				bypassQuiet: params.urgency === "critical",
+				urgency: params.urgency ?? "normal",
 			});
 			if (!result.sent.length && !result.failed.length) {
 				return {
@@ -299,10 +448,19 @@ export default function notify(pi: ExtensionAPI): void {
 					config.channels.webhook = { ...(config.channels.webhook ?? {}), enabled: false };
 				}
 
+				const wantTermux = await ctx.ui.confirm("Notify setup", "Enable the Termux:API channel (system notifications via termux-notification)?");
+				if (wantTermux) {
+					const appTitle = await ctx.ui.input("Notification header (short, shown in status bar)", "Waywiser");
+					config.channels.termux = { enabled: true, appTitle: (appTitle ?? "").trim() || "Waywiser" };
+				} else {
+					config.channels.termux = { ...(config.channels.termux ?? {}), enabled: false };
+				}
+
 				const defaults: string[] = [];
 				if (config.channels.desktop?.enabled) defaults.push("desktop");
 				if (config.channels.telegram?.enabled) defaults.push("telegram");
 				if (config.channels.webhook?.enabled) defaults.push("webhook");
+				if (config.channels.termux?.enabled) defaults.push("termux");
 				config.default = defaults.length ? defaults : ["desktop"];
 
 				writeJSON(notifyConfigFile(), config);

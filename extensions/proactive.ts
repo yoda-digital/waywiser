@@ -78,6 +78,36 @@ export function setProactiveConfig(patch: Partial<ProactiveConfig>): void {
 	writeJSON(file, full);
 }
 
+// ── extension points (backward-compatible, spec 08 §6) ─────────────────
+//
+// Other extensions (mobile/*, future sensors) can plug into the SENSE and
+// ORIENT/deliver phases without editing this file again. Providers run inside
+// try/catch — a broken provider must never kill the tick.
+
+export type SignalProvider = (db: DatabaseSync, opts?: { lastAgentStartAt?: number; now?: Date }) => Signal[];
+export type PostFilter = (signals: Signal[]) => Signal[];
+
+const signalProviders: SignalProvider[] = [];
+const postFilters: PostFilter[] = [];
+
+/** Register an extra signal source. Returns an unregister function. */
+export function registerSignalProvider(fn: SignalProvider): () => void {
+	signalProviders.push(fn);
+	return () => {
+		const i = signalProviders.indexOf(fn);
+		if (i >= 0) signalProviders.splice(i, 1);
+	};
+}
+
+/** Register a filter that runs AFTER built-in discretion, right before delivery. */
+export function registerPostFilter(fn: PostFilter): () => void {
+	postFilters.push(fn);
+	return () => {
+		const i = postFilters.indexOf(fn);
+		if (i >= 0) postFilters.splice(i, 1);
+	};
+}
+
 // ── SENSE: SQL-only signal gathering (zero LLM cost) ────────────────────
 
 /**
@@ -179,6 +209,17 @@ export function gatherSignals(db: DatabaseSync, opts?: { lastAgentStartAt?: numb
 		}
 	}
 
+	// Plug-in providers (mobile-context, future sensors). Each is isolated —
+	// a throwing provider only loses its own signals, never the built-ins.
+	for (const provider of signalProviders) {
+		try {
+			const extra = provider(db, opts);
+			if (extra?.length) signals.push(...extra);
+		} catch (e) {
+			registry_().log("proactive", `signal provider failed: ${String(e)}`);
+		}
+	}
+
 	return signals;
 }
 
@@ -268,7 +309,16 @@ export default function proactive(pi: ExtensionAPI): void {
 		const prioritized = orient(signals, lastAlerts, cfg.dedupeWindowMs, { quiet: isQuietNow() });
 		// Discretion (spec 07 §3.2): never propagate sensitive content, don't nag
 		// (max 3/hour), don't interrupt a deep conversation with non-critical signals.
-		const discreet = applyDiscretion(prioritized);
+		let discreet = applyDiscretion(prioritized);
+		// Post-filters (spec 08 §6): mobile context can drop signals when the phone
+		// is low/hot/on-cellular; runs AFTER discretion so we never bypass it.
+		for (const pf of postFilters) {
+			try {
+				discreet = pf(discreet);
+			} catch (e) {
+				registry_().log("proactive", `post-filter failed: ${String(e)}`);
+			}
+		}
 		lastSignalCount = discreet.length;
 
 		for (const signal of discreet) {
@@ -344,7 +394,12 @@ export default function proactive(pi: ExtensionAPI): void {
 				// doesn't consume the real dedupe window or notification quota for
 				// signals that haven't actually been acted on.
 				const preview = orient(signals, new Map(), cfg.dedupeWindowMs, { quiet: isQuietNow() });
-				const previewDiscreet = applyDiscretion(preview, { sendLog: [] });
+				let previewDiscreet = applyDiscretion(preview, { sendLog: [] });
+				for (const pf of postFilters) {
+					try {
+						previewDiscreet = pf(previewDiscreet);
+					} catch { /* preview-only: swallow */ }
+				}
 				ctx.ui.notify(
 					previewDiscreet.length
 						? previewDiscreet.map((s) => `P${s.priority} [${s.requiresLLM ? "turn" : "notify"}] ${s.title}: ${s.body}`).join("\n")
