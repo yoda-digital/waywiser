@@ -41,6 +41,15 @@ if [ -f "$WAYWISER_PKG_DIR/config/brain.example.json" ] && [ ! -f "$WAYWISER_HOM
 	echo "waywiser: created default brain.json" >&2
 fi
 
+# Mobile (Termux) config (first-run bootstrap from example)
+if [ -f "$WAYWISER_PKG_DIR/config/mobile.example.json" ] && [ ! -f "$WAYWISER_HOME/mobile.json" ]; then
+	cp "$WAYWISER_PKG_DIR/config/mobile.example.json" "$WAYWISER_HOME/mobile.json"
+	echo "waywiser: created default mobile.json" >&2
+fi
+
+# Mobile: create ~/.waywiser/mobile/{tokens,msgs} so the inbox works on first launch
+mkdir -p "$WAYWISER_HOME/mobile/tokens" "$WAYWISER_HOME/mobile/msgs"
+
 # ── Additional plugin discovery (for future plugins, NOT Brain) ──────
 PLUGIN_ARGS=()
 PLUGINS_DIR="$WAYWISER_PKG_DIR/plugins"

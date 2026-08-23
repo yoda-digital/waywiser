@@ -1,0 +1,23 @@
+{
+	"enabled": true,
+	"interactive": true,
+	"context": {
+		"battery": true,
+		"wifi": true,
+		"thermal": true,
+		"audio": true,
+		"network": true,
+		"ttlMs": 60000
+	},
+	"wakeLock": { "mode": "off", "burstMaxMs": 30000 },
+	"jobScheduler": { "enabled": false, "periodMs": 900000 },
+	"channels": {
+		"critical": "waywiser-critical",
+		"proactive": "waywiser-proactive",
+		"multitask": "waywiser-multitask",
+		"approval": "waywiser-approval"
+	},
+	"biometric": { "gateAskUser": false },
+	"capture": { "board": "default", "type": "task" },
+	"actions": { "defaultTTLMs": 3600000 }
+}

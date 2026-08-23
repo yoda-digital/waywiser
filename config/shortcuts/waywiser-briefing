@@ -1,0 +1,6 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# Termux:Widget shortcut — on-demand briefing.
+# Fires the standalone tick with --briefing so the user always sees a
+# notification, even when nothing is overdue.
+set -euo pipefail
+exec waywiser-tick --once --briefing

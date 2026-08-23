@@ -1,0 +1,112 @@
+#!/data/data/com.termux/files/usr/bin/env node
+/**
+ * waywiser-tick — Doze-safe standalone OODA tick (spec 08 §7).
+ *
+ * Invoked by termux-job-scheduler on a fixed interval OR manually
+ * (`/mobile tick`). Reads waywiser.db read-only, computes the P0 subset
+ * of gatherSignals (goals past deadline, cards overdue), dedupes against
+ * ~/.waywiser/mobile/tick-alerts.json (one-hour window), and fires
+ * termux-notification for anything new.
+ *
+ * Never opens pi. Never runs an LLM. Never fires P1+ (those require
+ * the live agent to be meaningful).
+ *
+ * Flags:
+ *   --once        run one pass and exit (default when called by JobScheduler)
+ *   --briefing    force emit a summary notification even if nothing is new
+ */
+import { DatabaseSync } from "node:sqlite";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { spawn } from "node:child_process";
+
+const HOME = process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser");
+const DB = path.join(HOME, "waywiser.db");
+const ALERTS = path.join(HOME, "mobile", "tick-alerts.json");
+const HOUR_MS = 3_600_000;
+
+const args = new Set(process.argv.slice(2));
+const forceBriefing = args.has("--briefing");
+
+function readAlerts() {
+	try {
+		return JSON.parse(fs.readFileSync(ALERTS, "utf-8"));
+	} catch {
+		return {};
+	}
+}
+function writeAlerts(a) {
+	fs.mkdirSync(path.dirname(ALERTS), { recursive: true });
+	const tmp = `${ALERTS}.${process.pid}.tmp`;
+	fs.writeFileSync(tmp, JSON.stringify(a));
+	fs.renameSync(tmp, ALERTS);
+}
+function pruneAlerts(a) {
+	const cut = Date.now() - HOUR_MS;
+	const out = {};
+	for (const [k, v] of Object.entries(a)) if (typeof v === "number" && v >= cut) out[k] = v;
+	return out;
+}
+
+function notify(title, body, urgency = "high") {
+	const args = ["--title", title, "--content", body, "--priority", urgency === "critical" ? "max" : "high", "--id", `waywiser-tick-${urgency}`];
+	if (urgency === "critical") args.push("--icon", "error", "--sound", "--vibrate", "300,150,300");
+	else args.push("--icon", "important_suggestions");
+	try {
+		const child = spawn("termux-notification", args, { stdio: "ignore" });
+		child.on("error", () => {});
+	} catch {}
+}
+
+if (!fs.existsSync(DB)) {
+	process.stderr.write(`waywiser-tick: no db at ${DB} — nothing to do\n`);
+	process.exit(0);
+}
+
+let db;
+try {
+	db = new DatabaseSync(DB, { readOnly: true });
+} catch (e) {
+	process.stderr.write(`waywiser-tick: cannot open db: ${e.message}\n`);
+	process.exit(0);
+}
+
+let alerts = pruneAlerts(readAlerts());
+
+// P0 signals only (spec 08 §7).
+const p0 = [];
+
+try {
+	const rows = db.prepare(
+		"SELECT id, text, deadline FROM goals WHERE deadline IS NOT NULL AND deadline < datetime('now') AND status = 'active' ORDER BY deadline LIMIT 3"
+	).all();
+	if (rows.length) p0.push({ key: "goals-overdue", title: "Goal deadline passed", body: `${rows.length} goal(s) past deadline: ${rows.map((g) => `${g.text} (${g.deadline})`).join("; ")}` });
+} catch { /* schema drift — ignore */ }
+
+try {
+	const rows = db.prepare(
+		"SELECT id, title, due FROM cards WHERE due IS NOT NULL AND due < datetime('now') AND status NOT IN ('done') ORDER BY due LIMIT 5"
+	).all();
+	if (rows.length) {
+		// Cards themselves are P1 in the live tick — but overdue cards are user-
+		// visible enough that the standalone tick still surfaces the top one as a
+		// P0 notification (bounded to one per hour by dedup).
+		p0.push({ key: "cards-overdue-tick", title: "Overdue cards", body: `${rows.length} card(s) overdue: ${rows.map((c) => `${c.title} (due ${c.due})`).join(", ")}` });
+	}
+} catch { /* ignore */ }
+
+let firedCount = 0;
+for (const sig of p0) {
+	if (alerts[sig.key] && Date.now() - alerts[sig.key] < HOUR_MS) continue;
+	alerts[sig.key] = Date.now();
+	notify(sig.title, sig.body, sig.key === "goals-overdue" ? "critical" : "high");
+	firedCount++;
+}
+
+if (forceBriefing && firedCount === 0) {
+	const summary = `No overdue goals or cards. Waywiser is idle.`;
+	notify("Waywiser briefing", summary, "high");
+}
+
+writeAlerts(alerts);
+try { db.close(); } catch {}

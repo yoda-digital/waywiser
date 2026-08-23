@@ -312,9 +312,56 @@ All config lives in `~/.waywiser/`:
 | `notify.json` | Notification channel setup (desktop, Telegram, webhook) |
 | `mem.json` | Memory subsystem tuning (auto, recall mode, gate timeout) |
 | `quiet.json` | Quiet hours window (HH:MM-HH:MM) |
+| `mobile.json` | Termux/Android integration (interactive notifications, sensors, wake-lock, job-scheduler, channels) |
 | `brain/` | Brain vault (Obsidian-compatible markdown) |
 | `boards/` | Kanban board markdown exports |
+| `mobile/` | Filesystem inbox for notification callbacks (`tokens/`, `msgs/`) |
 | `skills/` | PA playbooks + evolved skills (active/candidates/retired) |
+
+## Mobile (Termux)
+
+Waywiser runs first-class on Termux. When installed on Android with the
+Termux:API app it exposes phone context to the proactive engine and turns
+notifications into fully interactive touchpoints. On desktop everything
+below stays inert — no probes, no wake-lock, no extra channels.
+
+| Feature | Notes |
+|---|---|
+| **Interactive notifications** | Up to 3 tap-through buttons per notification + Android Direct Reply. Actions land as inbox messages; pi picks them up on next tick (Doze-safe). |
+| **Mobile context sensor** | `mobile_context` tool + `readMobileContext()`: battery %, temperature, wifi SSID/RSSI, headphones/BT. Cached for 60s. |
+| **Proactive discretion** | Battery <20% & unplugged → drops P2/P3 signals. Temperature >42°C → drops LLM-heavy signals. Battery ≤10% → P0 alert. |
+| **Wake-lock modes** | `off` (default), `burst` (bounded via `mobile_burst` tool, ≤30s), `always`. |
+| **JobScheduler fallback** | Opt-in periodic tick (min 15 min) survives Doze; fires `bin/waywiser-tick` even when pi isn't running. |
+| **Voice / share capture** | `waywiser-capture` widget uses `termux-speech-to-text`; Android share-sheet routes through `termux-url-opener`. |
+| **Biometric approvals** | Opt-in — high-risk actions gate on `termux-fingerprint`. |
+| **Custom channels** | Separate Android channels for critical / proactive / multitask / approval — user tunes each independently. |
+
+### Setup
+
+```bash
+# One-time (after `pkg install termux-api` and installing the Termux:API app):
+waywiser
+> /mobile setup                 # provisions channels, records bin paths
+> /mobile install-shortcuts     # copies widget scripts to ~/.shortcuts
+> /mobile status                # sanity check
+> /mobile test buttons          # fires an interactive test notification
+```
+
+Add the Termux:Widget from your homescreen to launch `waywiser-capture`,
+`waywiser-briefing`, and `waywiser-standup`. Share any text/URL from
+another Android app → routes into the capture inbox via
+`termux-url-opener`.
+
+### /mobile subcommands
+
+- `status` — Termux availability, config, last context snapshot
+- `setup` — first-run channel + bin provisioning
+- `install-shortcuts` — copy widget scripts into `~/.shortcuts`
+- `test buttons|critical` — fire a test notification
+- `context` — force a fresh context probe and print JSON
+- `tick` — run the standalone Doze-safe tick once (also invoked by
+  JobScheduler)
+- `wake on|off` — manual wake-lock
 
 ## Tests
 

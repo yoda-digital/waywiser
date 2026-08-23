@@ -1,0 +1,55 @@
+#!/data/data/com.termux/files/usr/bin/env node
+/**
+ * waywiser-do — notification-button callback.
+ *
+ * Invoked by dash -c from termux-notification --button*-action. Redeems the
+ * one-shot inbox token minted by extensions/mobile/actions.ts, then queues a
+ * message for the live pi process to pick up (or, if pi is asleep, keeps it
+ * for the next drain). Never spawns pi and never runs an LLM.
+ *
+ * Usage:  waywiser-do <token>
+ */
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { randomBytes } from "node:crypto";
+
+const HEX_TOKEN_RE = /^[a-f0-9-]{16,}$/i;
+
+const HOME = process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser");
+const TOKENS = path.join(HOME, "mobile", "tokens");
+const MSGS = path.join(HOME, "mobile", "msgs");
+
+function die(msg) {
+	process.stderr.write(`waywiser-do: ${msg}\n`);
+	process.exit(2);
+}
+
+const token = process.argv[2];
+if (!token || !HEX_TOKEN_RE.test(token)) die(`invalid token: ${JSON.stringify(token ?? "")}`);
+
+fs.mkdirSync(MSGS, { recursive: true });
+let intent = null;
+try {
+	const p = path.join(TOKENS, `${token}.json`);
+	const raw = fs.readFileSync(p, "utf-8");
+	const parsed = JSON.parse(raw);
+	if (parsed?.expiresAtMs && Date.now() > parsed.expiresAtMs) {
+		try { fs.unlinkSync(p); } catch {}
+		die("token expired");
+	}
+	intent = parsed.intent ?? null;
+	try { fs.unlinkSync(p); } catch {}
+} catch {
+	die("token not found or unreadable");
+}
+
+const msg = {
+	token,
+	kind: "do",
+	receivedAtMs: Date.now(),
+	extra: { intent: JSON.stringify(intent) },
+};
+const name = `${Date.now().toString(36)}-${randomBytes(4).toString("hex")}.json`;
+const tmp = path.join(MSGS, `${name}.tmp`);
+fs.writeFileSync(tmp, JSON.stringify(msg));
+fs.renameSync(tmp, path.join(MSGS, name));

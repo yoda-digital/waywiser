@@ -1,0 +1,8 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# Termux:Widget shortcut — voice capture.
+# Runs the STT dispatcher, which enqueues a "capture" inbox message that the
+# live pi process picks up and turns into a memory + (optionally) a kanban card.
+set -euo pipefail
+exec "${PREFIX:-/data/data/com.termux/files/usr}/bin/env" \
+    node "$(dirname "$(readlink -f "$0")")/../../bin/waywiser-capture" stt 2>/dev/null || \
+exec waywiser-capture stt

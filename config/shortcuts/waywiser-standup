@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# Termux:Widget shortcut — daily standup capture.
+# Prompts for yesterday/today/blockers via termux-dialog and pipes to the
+# manual capture ingest so it lands in Brain + optionally the kanban board.
+set -euo pipefail
+Y=$(termux-dialog text -t "Standup — yesterday" -i "What did you do?" | jq -r '.text // ""' 2>/dev/null || true)
+T=$(termux-dialog text -t "Standup — today"     -i "What will you do?" | jq -r '.text // ""' 2>/dev/null || true)
+B=$(termux-dialog text -t "Standup — blockers"  -i "Anything blocking?" | jq -r '.text // ""' 2>/dev/null || true)
+{ printf 'Standup for %s\n\nYesterday: %s\nToday: %s\nBlockers: %s\n' "$(date +%F)" "$Y" "$T" "$B"; } | waywiser-capture manual

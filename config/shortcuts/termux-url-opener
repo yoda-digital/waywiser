@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# Android share-sheet entry point. Termux invokes ~/bin/termux-url-opener with
+# the shared URL/text as $1. We route it into the waywiser capture ingest.
+# Install by copying this file to ~/bin/termux-url-opener (or symlinking).
+set -euo pipefail
+if [ -z "${1-}" ]; then
+    exit 0
+fi
+waywiser-capture share "$1"

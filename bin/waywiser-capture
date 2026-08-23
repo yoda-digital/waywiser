@@ -1,0 +1,68 @@
+#!/data/data/com.termux/files/usr/bin/env node
+/**
+ * waywiser-capture — voice / share-sheet ingest callback.
+ *
+ * Usage:
+ *   waywiser-capture stt              # runs termux-speech-to-text, enqueues result
+ *   waywiser-capture share <text>     # enqueues text passed by termux-url-opener
+ *   waywiser-capture manual <text>    # enqueues arbitrary text (from a shortcut)
+ *
+ * Enqueues an inbox message of kind "capture" with the transcribed/shared
+ * payload. The mobile extension's inbox router then hands it to
+ * extensions/mobile/capture.ts:handleCapture().
+ */
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
+
+const HOME = process.env.WAYWISER_HOME || path.join(process.env.HOME || ".", ".waywiser");
+const MSGS = path.join(HOME, "mobile", "msgs");
+
+function die(msg) {
+	process.stderr.write(`waywiser-capture: ${msg}\n`);
+	process.exit(2);
+}
+
+function enqueue(source, payload) {
+	fs.mkdirSync(MSGS, { recursive: true });
+	const msg = {
+		token: randomUUID().replace(/-/g, ""),
+		kind: "capture",
+		receivedAtMs: Date.now(),
+		payload,
+		extra: { source },
+	};
+	const name = `${Date.now().toString(36)}-${randomBytes(4).toString("hex")}.json`;
+	const tmp = path.join(MSGS, `${name}.tmp`);
+	fs.writeFileSync(tmp, JSON.stringify(msg));
+	fs.renameSync(tmp, path.join(MSGS, name));
+}
+
+const source = process.argv[2] ?? "manual";
+if (source === "stt") {
+	const child = spawn("termux-speech-to-text", [], { stdio: ["ignore", "pipe", "pipe"] });
+	let out = "";
+	child.stdout.on("data", (d) => { out += d.toString(); });
+	child.on("error", (e) => die(`termux-speech-to-text failed: ${e.message}`));
+	child.on("close", (code) => {
+		if (code !== 0 || !out.trim()) die(`stt no result (exit ${code})`);
+		enqueue("stt", out.trim());
+		try { spawn("termux-toast", ["captured"], { stdio: "ignore" }); } catch {}
+	});
+} else if (source === "share" || source === "manual") {
+	const payload = process.argv.slice(3).join(" ");
+	if (!payload.trim()) {
+		// Fall back to stdin (termux-url-opener may pipe).
+		let buf = "";
+		process.stdin.on("data", (d) => { buf += d.toString(); });
+		process.stdin.on("end", () => {
+			if (!buf.trim()) die("empty payload");
+			enqueue(source, buf.trim());
+		});
+	} else {
+		enqueue(source, payload);
+	}
+} else {
+	die(`unknown source: ${JSON.stringify(source)}`);
+}
