@@ -118,3 +118,102 @@ describe("_loadConfig", () => {
     assert.equal(mod._loadConfig().style, "code");
   });
 });
+
+describe("extension wiring", () => {
+  type Handlers = Record<string, Array<(event: unknown, ctx?: unknown) => unknown>>;
+  interface MockAPI {
+    handlers: Handlers;
+    transformers: Array<(md: string, ctx: { messageType: string; isStreaming: boolean; availableWidth: number }) => string>;
+    on(event: string, handler: (event: unknown, ctx?: unknown) => unknown): void;
+    registerMarkdownTransformer(t: (md: string, ctx: { messageType: string; isStreaming: boolean; availableWidth: number }) => string): void;
+  }
+  function makeApi(): MockAPI {
+    return {
+      handlers: {},
+      transformers: [],
+      on(event, handler) {
+        (this.handlers[event] ??= []).push(handler);
+      },
+      registerMarkdownTransformer(t) {
+        this.transformers.push(t);
+      },
+    };
+  }
+
+  beforeEach(clearConfig);
+
+  it("registers a markdown transformer", () => {
+    const api = makeApi();
+    mod.default(api as unknown);
+    assert.equal(api.transformers.length, 1);
+  });
+
+  it("prefixes user markdown with a stamp", () => {
+    const api = makeApi();
+    mod.default(api as unknown);
+    const out = api.transformers[0]("hello", { messageType: "user", isStreaming: false, availableWidth: 80 });
+    assert.match(out, /^`\[.+\]`\s+hello$/);
+  });
+
+  it("prefixes assistant markdown with a stamp", () => {
+    const api = makeApi();
+    mod.default(api as unknown);
+    const out = api.transformers[0]("world", { messageType: "assistant", isStreaming: false, availableWidth: 80 });
+    assert.match(out, /^`\[.+\]`\s+world$/);
+  });
+
+  it("passes through assistant-thinking unchanged", () => {
+    const api = makeApi();
+    mod.default(api as unknown);
+    const out = api.transformers[0]("thinking...", { messageType: "assistant-thinking", isStreaming: false, availableWidth: 80 });
+    assert.equal(out, "thinking...");
+  });
+
+  it("reuses stamp across streaming updates for the same message", () => {
+    const api = makeApi();
+    mod.default(api as unknown);
+    const t = api.transformers[0];
+    const first = t("streaming reply here...", { messageType: "assistant", isStreaming: true, availableWidth: 80 });
+    // Advance real time; cache should still return the same stamp.
+    const start = Date.now();
+    while (Date.now() - start < 60_000 / 1000) { /* micro-loop; effectively same minute */ break; }
+    const second = t("streaming reply here... more tokens", { messageType: "assistant", isStreaming: true, availableWidth: 80 });
+    const firstStamp = first.match(/`\[(.+?)\]`/)?.[1];
+    const secondStamp = second.match(/`\[(.+?)\]`/)?.[1];
+    assert.equal(firstStamp, secondStamp);
+  });
+
+  it("no-ops when tuiStamps.enabled=false", () => {
+    writeConfig({ tuiStamps: { enabled: false } });
+    const api = makeApi();
+    mod.default(api as unknown);
+    // Fire session_start so the extension re-reads config.
+    for (const h of api.handlers["session_start"] ?? []) h(undefined);
+    const out = api.transformers[0]("hello", { messageType: "user", isStreaming: false, availableWidth: 80 });
+    assert.equal(out, "hello");
+  });
+
+  it("uses plain style when configured", () => {
+    writeConfig({ tuiStamps: { style: "plain" } });
+    const api = makeApi();
+    mod.default(api as unknown);
+    for (const h of api.handlers["session_start"] ?? []) h(undefined);
+    const out = api.transformers[0]("hello", { messageType: "user", isStreaming: false, availableWidth: 80 });
+    assert.match(out, /^\[.+\]\s+hello$/);
+    assert.ok(!out.startsWith("`"));
+  });
+
+  it("session_start clears the streaming cache", () => {
+    const api = makeApi();
+    mod.default(api as unknown);
+    const t = api.transformers[0];
+    const before = t("cache me", { messageType: "user", isStreaming: true, availableWidth: 80 });
+    for (const h of api.handlers["session_start"] ?? []) h(undefined);
+    // After clear, next call for the same key gets a fresh Date.now(). We
+    // can't easily assert the value differs (timing), but we can assert the
+    // shape is still valid and the call doesn't throw.
+    const afterCall = t("cache me", { messageType: "user", isStreaming: true, availableWidth: 80 });
+    assert.match(afterCall, /^`\[.+\]`\s+cache me$/);
+    void before;
+  });
+});

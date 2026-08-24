@@ -41,6 +41,7 @@ const modules = [
 	"./meta-skills.js",
 	"./mobile/index.js",
 	"./clock.js",
+	"./tui-stamps.js",
 ];
 
 export default async function (pi: ExtensionAPI) {
