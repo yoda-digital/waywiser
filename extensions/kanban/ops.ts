@@ -16,7 +16,7 @@ import * as path from "node:path";
 import { db_, waywiserHome } from "../utils/state.js";
 import { generateStaticSnapshot } from "../kanban-html.js";
 import { broadcastEvent } from "../kanban-server.js";
-import { fmtStamp, fmtDateTime, fmtDuration } from "../utils/time.js";
+import { fmtStamp, fmtDateTime, fmtDuration, parseTs } from "../utils/time.js";
 import {
 	STATUSES,
 	PRIORITIES,
@@ -54,7 +54,7 @@ export function setActiveBoardId(id: string): void {
 export function cardLine(c: CardRow): string {
 	const pri = c.priority && c.priority !== "med" ? ` [${c.priority}]` : "";
 	const typeTag = c.type === "idea" ? " 💡" : c.type === "bug" ? " 🐛" : "";
-	const age = c.status !== "done" && c.status !== "todo" ? ` ${fmtDuration(Date.now() - new Date(c.updated_at).getTime())}` : "";
+	const age = c.status !== "done" && c.status !== "todo" ? ` ${fmtDuration(Date.now() - parseTs(c.updated_at))}` : "";
 	const due = c.due
 		? c.status === "done"
 			? ` (was due ${fmtDateTime(c.due)})`

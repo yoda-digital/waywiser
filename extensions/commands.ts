@@ -183,7 +183,10 @@ export default function commands(pi: ExtensionAPI): void {
 
 			const budget: string[] = [];
 			if (maxSteps) budget.push(`max ${maxSteps} steps`);
-			if (deadline) budget.push(`deadline ${fmtDateTime(deadline)}`);
+			if (deadline) {
+				try { budget.push(`deadline ${fmtDateTime(deadline)}`); }
+				catch { budget.push(`deadline ${deadline}`); }
+			}
 			if (doneCondition) budget.push(`done when: ${doneCondition}`);
 
 			ctx.ui.notify(`Goal set: ${id} ${text}${budget.length ? ` (${budget.join(", ")})` : ""}`, "info");
