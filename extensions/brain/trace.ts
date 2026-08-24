@@ -18,7 +18,6 @@ import { randomUUID } from "node:crypto";
 import { classifyToolProvenance } from "./provenance.ts";
 import { extractTargetKey, linkRecoveries } from "./recovery.ts";
 import type { BrainConfig, Experience, ExperienceOutcome, Observation, RecallResult } from "./types.js";
-import { nowIso } from "../utils/time.js";
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -128,7 +127,7 @@ export class ExperienceTrace {
   private assistantTexts: string[] = [];
   private recalledMemoryIds: number[] = [];
   private recalledProcedureIds: string[] = [];
-  private runStartedAt: string = nowIso();
+  private runStartedAt: string = new Date().toISOString();
 
   constructor(config: BrainConfig) {
     this.config = config;
@@ -153,7 +152,7 @@ export class ExperienceTrace {
     this.assistantTexts = [];
     this.recalledMemoryIds = [];
     this.recalledProcedureIds = [];
-    this.runStartedAt = nowIso();
+    this.runStartedAt = new Date().toISOString();
   }
 
   /** Record a tool call event. */
@@ -161,7 +160,7 @@ export class ExperienceTrace {
     this.pendingToolCalls.set(event.toolCallId, {
       toolName: event.toolName,
       input: event.input,
-      timestamp: nowIso(),
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -189,7 +188,7 @@ export class ExperienceTrace {
       errorClass: event.isError ? inferErrorClass(event.content) : undefined,
       provenance: classifyToolProvenance(toolName),
       detailsJson: event.details ? JSON.stringify(event.details) : undefined,
-      timestamp: nowIso(),
+      timestamp: new Date().toISOString(),
     };
 
     this.observations.push(observation);
@@ -239,7 +238,7 @@ export class ExperienceTrace {
       skillsUsed: [],
       externalSources: [],
       startedAt: this.runStartedAt,
-      settledAt: nowIso(),
+      settledAt: new Date().toISOString(),
     };
 
     // Clear the observation buffer for the next run.
