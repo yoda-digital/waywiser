@@ -362,7 +362,7 @@ export default function metaSkills(pi: ExtensionAPI): void {
 	// Deep-conversation tracking for the Discretion engine — increments on every
 	// real user turn, resets after a gap longer than PAUSE_GAP_MS.
 	pi.on("before_agent_start", (event) => {
-		if (!event.prompt?.startsWith("[proactive]")) {
+		if (!/^\[\d{2}:\d{2} proactive\]/.test(event.prompt ?? "")) {
 			const now = Date.now();
 			if (lastTurnAt && now - lastTurnAt > PAUSE_GAP_MS) turnsSincePause = 0;
 			turnsSincePause += 1;

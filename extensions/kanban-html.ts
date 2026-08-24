@@ -6,6 +6,7 @@
  *  generateStaticSnapshot() → offline read-only fallback (all data baked in)
  */
 import { getBoardToken } from "./kanban-server.js";
+import { fmtDateOnly, fmtDateTime } from "./utils/time.js";
 
 export interface BoardRow {
 	id: string;
@@ -60,12 +61,6 @@ function sortCards(cards: CardRow[]): CardRow[] {
 		if (oa !== ob) return oa - ob;
 		return a.id.localeCompare(b.id);
 	});
-}
-
-function fmtDate(iso: string | null): string {
-	if (!iso) return "";
-	const d = new Date(iso);
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // ─── shared CSS ────────────────────────────────────────────────────────
@@ -153,7 +148,7 @@ function renderCardHtml(c: CardRow, interactive: boolean): string {
 	const od = isOverdue(c);
 	const cls = [`card`, `pri-${c.priority}`, od ? "overdue" : ""].filter(Boolean).join(" ");
 	const icon = TYPE_ICON[c.type] ?? "";
-	const dueFmt = c.due ? fmtDate(c.due) : "";
+	const dueFmt = c.due ? fmtDateOnly(c.due) : "";
 
 	const actions = interactive
 		? `<span class="card-actions">
@@ -441,7 +436,7 @@ document.querySelectorAll('.card').forEach(c=>c.onclick=function(){var id=this.d
 <div class="board">${columnsHtml}</div>
 ${blockedHtml}
 <footer>
-	<span>Snapshot generated: ${new Date().toISOString().replace("T", " ").slice(0, 19)}</span>
+	<span>Snapshot generated: ${fmtDateTime(Date.now())}</span>
 </footer>
 <script>${staticJs}</script>
 </body>

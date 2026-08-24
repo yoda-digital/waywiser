@@ -53,6 +53,7 @@ export const PRIORITIES = {
   PA_CATALOG:      4,  // PA playbook catalog
   KANBAN:          5,  // open kanban cards summary
   PERMISSIONS:     6,  // permission reminders
+  TIME_CONTEXT:    7,  // current time + session duration (volatile)
 } as const;
 
 // ── Registry ──────────────────────────────────────────────────────

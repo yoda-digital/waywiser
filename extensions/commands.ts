@@ -24,6 +24,7 @@ import { logTrace, type TraceEvent } from "./utils/trace.js";
 import { memAction, parseMemCommandLine, runRecallText } from "./memory.js";
 import { runConsolidate, formatConsolidateReport } from "./mem-dream.js";
 import { registerInjection, removeInjection, PRIORITIES, cacheStatsLine, injectionStats } from "./utils/prompt-budget.js";
+import { fmtStamp, fmtDateTime } from "./utils/time.js";
 
 interface Goal {
 	id: string;
@@ -182,7 +183,10 @@ export default function commands(pi: ExtensionAPI): void {
 
 			const budget: string[] = [];
 			if (maxSteps) budget.push(`max ${maxSteps} steps`);
-			if (deadline) budget.push(`deadline ${deadline}`);
+			if (deadline) {
+				try { budget.push(`deadline ${fmtDateTime(deadline)}`); }
+				catch { budget.push(`deadline ${deadline}`); }
+			}
 			if (doneCondition) budget.push(`done when: ${doneCondition}`);
 
 			ctx.ui.notify(`Goal set: ${id} ${text}${budget.length ? ` (${budget.join(", ")})` : ""}`, "info");
@@ -278,7 +282,7 @@ export default function commands(pi: ExtensionAPI): void {
 						} catch {
 							// Legacy text row — use raw text.
 						}
-						return `[${r.created_at}] ${r.kind}: ${detail}`;
+						return `[${fmtStamp(r.created_at)}] ${r.kind}: ${detail}`;
 					})
 					.join("\n");
 				ctx.ui.notify(rows.length ? display : "Journey empty.", "info");

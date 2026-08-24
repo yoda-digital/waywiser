@@ -14,6 +14,7 @@ import * as path from "node:path";
 import { db_, homeFile, registry_, waywiserHome } from "./utils/state.js";
 import { recentMemories, rememberRow, logMem, appendEpisode, memSettings, setMemSettings, READ_POOL_PREDICATE, type MemSettings } from "./utils/state.js";
 import { runChild } from "./utils/llmcall.js";
+import { fmtAge } from "./utils/time.js";
 import { applySupersedeDB, listConflictsDB, runConsolidate, formatConsolidateReport } from "./mem-dream.js";
 import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
 import {
@@ -450,7 +451,7 @@ export function selectRecallBlock(db: ReturnType<typeof db_>, terms: string[], m
 	const s = memSettings();
 	const rows = db
 		.prepare(
-			`SELECT m.id, m.type, m.source, m.content FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid
+			`SELECT m.id, m.type, m.source, m.content, m.created_at FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid
 				 WHERE memories_fts MATCH ? AND ${READ_POOL_PREDICATE}
 				 ORDER BY bm25(memories_fts) LIMIT ?`,
 		)
@@ -507,21 +508,21 @@ export async function runRecallText(db: ReturnType<typeof db_>, query: string, l
 	if (q) {
 		const rows = db
 			.prepare(
-				`SELECT m.id, m.type, m.source, m.content, bm25(memories_fts) AS rank
+				`SELECT m.id, m.type, m.source, m.content, m.created_at, bm25(memories_fts) AS rank
 					 FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid
 					 WHERE memories_fts MATCH ? AND ${READ_POOL_PREDICATE}
 					 ORDER BY rank LIMIT ?`,
 			)
-			.all(ftsEscape(q), lim) as Array<{ id: number; type: string; source: string; content: string }>;
+			.all(ftsEscape(q), lim) as Array<{ id: number; type: string; source: string; content: string; created_at: string }>;
 		const bump = db.prepare("UPDATE memories SET last_accessed = datetime('now'), access_count = access_count + 1 WHERE id = ?");
 		for (const r of rows) bump.run(r.id);
-		return { text: rows.length ? rows.map((r) => `#${r.id} [${r.type}|${r.source}] ${r.content}`).join("\n") : "No memories matched." };
+		return { text: rows.length ? rows.map((r) => `#${r.id} [${r.type}|${r.source}, ${fmtAge(r.created_at)}] ${r.content}`).join("\n") : "No memories matched." };
 	}
 	const idle = db
 		.prepare(
-			`SELECT m.id, m.type, m.source, m.content FROM memories m
+			`SELECT m.id, m.type, m.source, m.content, m.created_at FROM memories m
 			 WHERE ${READ_POOL_PREDICATE} ORDER BY m.access_count DESC, m.id DESC LIMIT ?`,
 		)
-		.all(lim) as Array<{ id: number; type: string; source: string; content: string }>;
-	return { text: idle.length ? idle.map((r) => `#${r.id} [${r.type}|${r.source}] ${r.content}`).join("\n") : "Memory is empty." };
+		.all(lim) as Array<{ id: number; type: string; source: string; content: string; created_at: string }>;
+	return { text: idle.length ? idle.map((r) => `#${r.id} [${r.type}|${r.source}, ${fmtAge(r.created_at)}] ${r.content}`).join("\n") : "Memory is empty." };
 }

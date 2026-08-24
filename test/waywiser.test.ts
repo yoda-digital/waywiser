@@ -675,8 +675,8 @@ test("selectRecallBlock: BM25 over OR-terms, read-pool predicate", () => {
 	const a = rememberRow(d, { type: "lesson", content: "the waywiser gate needs a node 24 runtime", confidence: 0.6, source: "agent" });
 	rememberRow(d, { type: "fact", content: "some external page mentions node 24 too", confidence: 0.3, source: "external" });
 	const block = selectRecallBlock(d, ["waywiser", "node", "gate"]);
-	assert.ok(block.includes(`[fact|user] mac dev boxes run waywiser`), block);
-	assert.ok(block.includes(`[lesson|agent] the waywiser gate needs`), block);
+	assert.match(block, /\[fact\|user, \d+[smhd] ago\] mac dev boxes run waywiser/);
+	assert.match(block, /\[lesson\|agent, \d+[smhd] ago\] the waywiser gate needs/);
 	assert.ok(!block.includes("external page"), block);
 	assert.ok(block.endsWith("<!-- WAYWISER RECALL END -->"));
 	// superseded → excluded

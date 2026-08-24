@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
 import { logLegacy } from "./trace.js";
+import { nowIso } from "./time.js";
 
 // Kept in sync with package.json "version" by hand (bug fix: was stuck at "0.1.0").
 export const WAYWISER_VERSION = "1.0.0";
@@ -248,7 +249,7 @@ export function rememberRow(
 		.prepare(
 			"INSERT INTO memories (type, content, confidence, tags, source_session, source, verbatim, valid_at, supersedes_id) VALUES (?,?,?,?,?,?,?,?,?)",
 		)
-		.run(p.type, p.content, p.confidence, p.tags ?? "", p.sourceSession ?? "", p.source ?? "user", p.verbatim ?? null, new Date().toISOString(), p.supersedesId ?? null);
+		.run(p.type, p.content, p.confidence, p.tags ?? "", p.sourceSession ?? "", p.source ?? "user", p.verbatim ?? null, nowIso(), p.supersedesId ?? null);
 	return Number(r.lastInsertRowid);
 }
 

@@ -40,6 +40,7 @@ const modules = [
 	"./proactive.js",
 	"./meta-skills.js",
 	"./mobile/index.js",
+	"./clock.js",
 ];
 
 export default async function (pi: ExtensionAPI) {

@@ -3,6 +3,8 @@
  * threshold, and validation rule from spec §4/§5 lives here so the gate,
  * recall and consolidation share one copy (spec files-table: "ALL pure logic").
  */
+import { fmtAge } from "./utils/time.js";
+
 export function tokens(s: string): Set<string> {
 	const out = new Set<string>();
 	for (const m of s.toLowerCase().matchAll(/[\p{L}\p{N}_]{2,}/gu)) out.add(m[0]);
@@ -158,6 +160,7 @@ export interface RecallRow {
 	type: string;
 	source: string;
 	content: string;
+	created_at?: string;
 }
 
 export function renderRecallBlock(terms: string[], rows: RecallRow[], maxChars = 500, maxRowChars = 180): string {
@@ -167,7 +170,8 @@ export function renderRecallBlock(terms: string[], rows: RecallRow[], maxChars =
 	let out = header;
 	for (const r of rows) {
 		const content = r.content.length > maxRowChars ? r.content.slice(0, maxRowChars - 1) + "…" : r.content;
-		const line = `[${r.type}|${r.source}] ${content}`;
+		const agePart = r.created_at ? `, ${fmtAge(r.created_at)}` : "";
+		const line = `[${r.type}|${r.source}${agePart}] ${content}`;
 		if (out.length + line.length + 2 > maxChars) break; // budget guards body lines only
 		out += line + "\n";
 	}

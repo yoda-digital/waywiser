@@ -26,6 +26,7 @@ import { db_, waywiserHome, readJSON, writeJSON, registry_ } from "./utils/state
 import { getQuiet, inDnd } from "./cronjob.js";
 import { sendNotification } from "./notify.js";
 import { applyDiscretion } from "./meta-skills.js";
+import { fmtTime, fmtStamp, fmtAge } from "./utils/time.js";
 
 // ── signal model ─────────────────────────────────────────────────────────
 
@@ -431,12 +432,12 @@ export default function proactive(pi: ExtensionAPI): void {
 				// P0 interrupts always bypass quiet hours (they already passed the
 				// quiet gate above for P0 by construction); notify-only signals never
 				// occupy the model.
-				await sendNotification(signal.title, signal.body, undefined, { bypassQuiet: signal.priority === 0 });
+				await sendNotification(signal.title, `[${fmtTime(Date.now())}] ${signal.body}`, undefined, { bypassQuiet: signal.priority === 0 });
 				registry_().log("proactive", `notify [${signal.key}] ${signal.title}`);
 				continue;
 			}
 			try {
-				pi.sendUserMessage(`[proactive] ${signal.body}`, { deliverAs: "followUp" });
+				pi.sendUserMessage(`[${fmtTime(Date.now())} proactive] ${signal.body}`, { deliverAs: "followUp" });
 				registry_().log("proactive", `turn [${signal.key}] ${signal.title}`);
 				break; // one agent turn per tick (no priority system for queued messages)
 			} catch (e) {
@@ -458,7 +459,7 @@ export default function proactive(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", (event, ctx) => {
 		latestCtx = ctx;
 		// Don't let our own proactive-triggered turns reset the absence clock.
-		if (!event.prompt?.startsWith("[proactive]")) lastAgentStartAt = Date.now();
+		if (!/^\[\d{2}:\d{2} proactive\]/.test(event.prompt ?? "")) lastAgentStartAt = Date.now();
 		clearTimer(); // user (or a triggered turn) is active — pause proactive
 	});
 
@@ -519,7 +520,7 @@ export default function proactive(pi: ExtensionAPI): void {
 				`Proactive engine: ${cfg.enabled ? "ON" : "OFF"}`,
 				`Tick interval: ${cfg.tickActiveMs / 60_000}min active / ${cfg.tickQuietMs / 60_000}min quiet`,
 				`Dedup window: ${cfg.dedupeWindowMs / 60_000}min`,
-				`Last tick: ${lastTickAt ? new Date(lastTickAt).toISOString() : "never"}`,
+				`Last tick: ${lastTickAt ? `${fmtStamp(lastTickAt)} (${fmtAge(lastTickAt)})` : "never"}`,
 				`Next tick: ${proactiveTimer ? "armed (agent idle)" : "not armed (agent busy, or disabled)"}`,
 				`Quiet hours now: ${isQuietNow() ? "yes" : "no"}`,
 				`Last scan surfaced: ${lastSignalCount} signal(s)`,

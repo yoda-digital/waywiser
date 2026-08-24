@@ -19,6 +19,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildSubagentPrompt, waywiserHome, readJSON, registry_, shortId } from "./utils/state.js";
 import { createPiRpcClient, createPiRpcPool, type PiRpcClient } from "./utils/rpc.js";
+import { fmtTime, fmtStamp, fmtDuration } from "./utils/time.js";
 
 const MAX_DEPTH = 2;
 const RETAIN_FINISHED = 10;
@@ -173,7 +174,11 @@ export default function delegate(pi: ExtensionAPI): void {
 		for (const c of fresh) notified.add(c.id);
 		if (fresh.length === 0) return;
 		try {
-			pi.sendUserMessage(`[waywiser-*] ${fresh.length} delegated subagent(s) finished:\n\n${fresh.map(childReport).join("\n\n---\n\n")}`, {
+			const reportLines = fresh.map((c) => {
+				const elapsed = fmtDuration((c.finishedAt ?? Date.now()) - c.startedAt);
+				return `[${fmtStamp(c.finishedAt ?? Date.now())}] ${childReport(c)} (took ${elapsed})`;
+			});
+			pi.sendUserMessage(`[${fmtTime(Date.now())} waywiser-*] ${fresh.length} delegated subagent(s) finished:\n\n${reportLines.join("\n\n---\n\n")}`, {
 				deliverAs: "followUp",
 			});
 		} catch {
@@ -275,9 +280,9 @@ export default function delegate(pi: ExtensionAPI): void {
 					return mk(
 						all
 							.map((c) => {
-								const age = Math.max(0, Math.round(((c.finishedAt ?? Date.now()) - c.startedAt) / 1000));
+								const elapsed = fmtDuration((c.finishedAt ?? Date.now()) - c.startedAt);
 								const note = c.status !== "running" && c.report ? `\n    report: ${c.report.slice(0, 200).replace(/\n/g, " ")}` : "";
-								return `[${c.id}] ${c.status.toUpperCase()} [${c.role}] ${age}s — ${c.goal.slice(0, 100)}${note}`;
+								return `[${c.id}] ${c.status.toUpperCase()} [${c.role}] ${elapsed} — ${c.goal.slice(0, 100)}${note}`;
 							})
 							.join("\n"),
 					);
