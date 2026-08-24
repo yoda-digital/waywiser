@@ -1141,6 +1141,74 @@ test("proactive: config defaults + set/get roundtrip preserves sibling keys", ()
 	fs.rmSync(path.join(waywiserHome(), "config.json"), { force: true });
 });
 
+test("proactive: signal for cards due within 24h", () => {
+	// Insert a card due 12 hours from now.
+	const soon = new Date(Date.now() + 12 * 3_600_000).toISOString();
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status, due) VALUES (?,?,?,?,?)").run("K_pro_soon", "default", "Due soon card", "todo", soon);
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "cards-due-soon");
+	assert.ok(hit, "expected a cards-due-soon signal");
+	assert.equal(hit.priority, 2);
+	assert.equal(hit.requiresLLM, true);
+	assert.ok(hit.body.includes("Due soon card"));
+});
+
+test("proactive: signal for stale doing cards (>24h without update)", () => {
+	const staleTime = new Date(Date.now() - 48 * 3_600_000).toISOString();
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status, updated_at) VALUES (?,?,?,?,?)").run("K_pro_stale", "default", "Stale doing card", "doing", staleTime);
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "cards-stale-doing");
+	assert.ok(hit, "expected a cards-stale-doing signal");
+	assert.equal(hit.priority, 2);
+	assert.ok(hit.body.includes("Stale doing card"));
+});
+
+test("proactive: signal for blocked cards aging >24h", () => {
+	const staleTime = new Date(Date.now() - 48 * 3_600_000).toISOString();
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status, block_reason, updated_at) VALUES (?,?,?,?,?,?)").run("K_pro_blocked", "default", "Blocked aging card", "blocked", "waiting for DNS", staleTime);
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "cards-blocked-aging");
+	assert.ok(hit, "expected a cards-blocked-aging signal");
+	assert.equal(hit.priority, 1);
+	assert.ok(hit.body.includes("Blocked aging card"));
+	assert.ok(hit.body.includes("waiting for DNS"));
+});
+
+test("proactive: signal for orphaned card workers (>30 min stale)", () => {
+	const staleTime = new Date(Date.now() - 60 * 60_000).toISOString(); // 1 hour ago
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status, worker_child, updated_at) VALUES (?,?,?,?,?,?)").run("K_pro_orphan", "default", "Orphaned worker card", "doing", "kc_dead", staleTime);
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "cards-orphaned-worker");
+	assert.ok(hit, "expected a cards-orphaned-worker signal");
+	assert.equal(hit.priority, 1);
+	assert.ok(hit.body.includes("Orphaned worker card"));
+	assert.ok(hit.body.includes("kc_dead"));
+});
+
+test("proactive: signal for completed planning board", () => {
+	db_().prepare("INSERT OR IGNORE INTO boards (id, name) VALUES (?,?)").run("plan-test", "Test Plan");
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status) VALUES (?,?,?,?)").run("K_plan_a", "plan-test", "Plan card A", "done");
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status) VALUES (?,?,?,?)").run("K_plan_b", "plan-test", "Plan card B", "done");
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "board-plan-complete");
+	assert.ok(hit, "expected a board-plan-complete signal");
+	assert.equal(hit.priority, 2);
+	assert.ok(hit.body.includes("Test Plan"));
+});
+
+test("proactive: no completed-board signal when plan board has open cards", () => {
+	db_().prepare("INSERT OR IGNORE INTO boards (id, name) VALUES (?,?)").run("plan-open", "Open Plan");
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status) VALUES (?,?,?,?)").run("K_popen_a", "plan-open", "Open card", "todo");
+	db_().prepare("INSERT OR REPLACE INTO cards (id, board_id, title, status) VALUES (?,?,?,?)").run("K_popen_b", "plan-open", "Done card", "done");
+	const signals = gatherSignals(db_());
+	const hit = signals.find((s: { key: string }) => s.key === "board-plan-complete");
+	// The plan-test board from the previous test has all done cards, so the signal
+	// may still fire for THAT board — but not for plan-open.
+	if (hit) {
+		assert.ok(!hit.body.includes("Open Plan"), "plan-open should NOT appear in the complete signal (it has open cards)");
+	}
+});
+
 // ---------------------------------------------------------------- meta-skills (spec 07 phase 3)
 test("meta-skills: emotional signal detects frustration from a short reply after a long exchange", () => {
 	assert.equal(detectEmotionalSignal("fine", 2000), "frustrated");

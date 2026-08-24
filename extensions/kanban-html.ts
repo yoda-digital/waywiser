@@ -255,20 +255,21 @@ const TOKEN = '${token}';
 const AUTH_HEADERS = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN };
 let activeBoard = '${escHtml(activeBoardId)}';
 
-// ── SSE ──
+// ── SSE (debounced — no more full-page reload flicker) ──
 let evtSrc;
+let reloadTimer = null;
+function scheduleReload() {
+	if (reloadTimer) return; // already scheduled
+	reloadTimer = setTimeout(() => { reloadTimer = null; location.reload(); }, 600);
+}
 function connectSSE() {
 	evtSrc = new EventSource('http://localhost:${serverPort}/events?token=' + TOKEN);
 	evtSrc.onopen = () => { document.getElementById('conn-dot').className='dot on'; document.getElementById('conn-text').textContent='Connected'; };
 	evtSrc.onerror = () => { document.getElementById('conn-dot').className='dot off'; document.getElementById('conn-text').textContent='Disconnected'; };
-	evtSrc.onmessage = (e) => {
-		document.getElementById('last-evt').textContent = new Date().toLocaleTimeString();
-		location.reload();
-	};
 	['card_created','card_updated','card_deleted','board_changed'].forEach(ev => {
 		evtSrc.addEventListener(ev, () => {
 			document.getElementById('last-evt').textContent = new Date().toLocaleTimeString();
-			location.reload();
+			scheduleReload();
 		});
 	});
 }
@@ -330,7 +331,8 @@ async function deleteCard(id) {
 async function unblock(id) {
 	await fetch(API+'/cards/'+id, { method:'PUT', headers:AUTH_HEADERS, body:JSON.stringify({status:'todo',block_reason:null}) });
 }
-function switchBoard(id) {
+async function switchBoard(id) {
+	await fetch(API+'/active-board', { method:'PUT', headers:AUTH_HEADERS, body:JSON.stringify({board:id}) });
 	activeBoard = id;
 	localStorage.setItem('waywiser-board', id);
 	location.reload();
@@ -339,7 +341,7 @@ function addBoard() {
 	const name = prompt('New board name:');
 	if (!name) return;
 	fetch(API+'/boards', { method:'POST', headers:AUTH_HEADERS, body:JSON.stringify({name}) })
-		.then(() => location.reload());
+		.then(() => switchBoard(name.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'board'));
 }
 function toggleTheme() {
 	const r = document.documentElement;
@@ -347,12 +349,10 @@ function toggleTheme() {
 	r.setAttribute('data-theme', next);
 	localStorage.setItem('waywiser-theme', next);
 }
-// restore prefs
+// restore prefs (theme only — board state is server-authoritative)
 (function(){
 	const t = localStorage.getItem('waywiser-theme');
 	if (t) document.documentElement.setAttribute('data-theme', t);
-	const b = localStorage.getItem('waywiser-board');
-	if (b && b !== activeBoard) { activeBoard = b; location.replace(location.pathname+'?board='+b); }
 })();
 `;
 

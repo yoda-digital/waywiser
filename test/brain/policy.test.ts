@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import * as path from "node:path";
 import {
   inferScope, detectProjectKey, isPromotionEligible, SAFETY_BOUNDARIES,
 } from "../../extensions/brain/policy.ts";
@@ -64,9 +65,12 @@ describe("policy", () => {
     });
 
     it("finds git root from subdirectory", () => {
-      // Use the waywiser repo itself as a known git root
-      const result = detectProjectKey("/home/nalyk/gits/pi-assistant/waywiser/brain", DEFAULT_BRAIN_CONFIG);
-      assert.equal(result, "/home/nalyk/gits/pi-assistant/waywiser");
+      // Use the waywiser repo itself as a known git root — resolve dynamically
+      // so the test works regardless of where the repo is checked out.
+      const repoRoot = path.resolve(import.meta.dirname, "../..");
+      const subdir = path.join(repoRoot, "extensions", "brain");
+      const result = detectProjectKey(subdir, DEFAULT_BRAIN_CONFIG);
+      assert.equal(result, repoRoot);
     });
   });
 

@@ -1,5 +1,5 @@
 ---
-name: Google Calendar
+name: google-calendar
 description: Calendar-aware personal assistant — schedule awareness, event management, conflict detection, focus time
 triggers:
   - calendar

@@ -31,7 +31,9 @@ interface GogSchema {
 interface SchemaCommand {
 	name?: string;
 	id?: string;
+	path?: string;
 	commands?: SchemaCommand[];
+	subcommands?: SchemaCommand[];
 	flags?: SchemaFlag[];
 }
 
@@ -90,10 +92,9 @@ function flattenCommands(cmd: SchemaCommand, prefix = ""): string[] {
 	const id = cmd.id || cmd.name || "";
 	const fullId = prefix ? `${prefix}.${id}` : id;
 	if (fullId) ids.push(fullId);
-	if (cmd.commands) {
-		for (const sub of cmd.commands) {
-			ids.push(...flattenCommands(sub, fullId));
-		}
+	const subs = [...(cmd.commands ?? []), ...(cmd.subcommands ?? [])];
+	for (const sub of subs) {
+		ids.push(...flattenCommands(sub, fullId));
 	}
 	return ids;
 }
@@ -179,8 +180,13 @@ export async function validateContract(
 
 	const missing: string[] = [];
 
-	// Validate commands
-	const allCommands = schema.command ? flattenCommands(schema.command) : [];
+	// Validate commands (root-relative IDs, e.g. "calendar.events" and "schema")
+	const rootCommand = schema.command;
+	const allCommands = rootCommand
+		? [...(rootCommand.commands ?? []), ...(rootCommand.subcommands ?? [])].flatMap((sub) =>
+				flattenCommands(sub, ""),
+		  )
+		: [];
 	const commandSet = new Set(allCommands);
 	for (const req of REQUIRED_COMMANDS) {
 		if (!commandSet.has(req)) missing.push(`command ${req}`);
