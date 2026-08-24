@@ -173,6 +173,84 @@ describe("ProductionGogRunner env sanitization", () => {
 		});
 		assert.ok(runner);
 	});
+
+	test("GOG_ACCESS_TOKEN is never passed to the child process", async () => {
+		process.env.GOG_ACCESS_TOKEN = "should-not-leak";
+		delete process.env.GOG_KEYRING_PASSWORD;
+		const probe = path.join(tmp, "probe-env.js");
+		fs.writeFileSync(
+			probe,
+			"console.log(JSON.stringify({ token: process.env.GOG_ACCESS_TOKEN ?? null, keyring: process.env.GOG_KEYRING_PASSWORD ?? null }));",
+		);
+		const runner = new ProductionGogRunner({ binary: process.execPath });
+		const result = await runner.run({
+			command: [probe],
+			exactCommands: ["probe"],
+			timeoutMs: 10_000,
+		});
+		assert.equal(result.exitCode, 0);
+		const envSeen = JSON.parse(result.stdout.trim());
+		assert.equal(envSeen.token, null, "GOG_ACCESS_TOKEN must be stripped");
+		delete process.env.GOG_ACCESS_TOKEN;
+	});
+
+	test("GOG_KEYRING_PASSWORD is injected from ~/.waywiser/.gog-keyring-password", async () => {
+		delete process.env.GOG_KEYRING_PASSWORD;
+		fs.writeFileSync(path.join(tmp, ".gog-keyring-password"), "file-kp-123\n");
+		const probe = path.join(tmp, "probe-env.js");
+		fs.writeFileSync(
+			probe,
+			"console.log(JSON.stringify({ keyring: process.env.GOG_KEYRING_PASSWORD ?? null }));",
+		);
+		const runner = new ProductionGogRunner({ binary: process.execPath });
+		const result = await runner.run({
+			command: [probe],
+			exactCommands: ["probe"],
+			timeoutMs: 10_000,
+		});
+		assert.equal(result.exitCode, 0);
+		const envSeen = JSON.parse(result.stdout.trim());
+		assert.equal(envSeen.keyring, "file-kp-123");
+	});
+
+	test("existing GOG_KEYRING_PASSWORD env var takes precedence over file", async () => {
+		fs.writeFileSync(path.join(tmp, ".gog-keyring-password"), "file-kp-123\n");
+		process.env.GOG_KEYRING_PASSWORD = "env-kp-456";
+		const probe = path.join(tmp, "probe-env.js");
+		fs.writeFileSync(
+			probe,
+			"console.log(JSON.stringify({ keyring: process.env.GOG_KEYRING_PASSWORD ?? null }));",
+		);
+		const runner = new ProductionGogRunner({ binary: process.execPath });
+		const result = await runner.run({
+			command: [probe],
+			exactCommands: ["probe"],
+			timeoutMs: 10_000,
+		});
+		assert.equal(result.exitCode, 0);
+		const envSeen = JSON.parse(result.stdout.trim());
+		assert.equal(envSeen.keyring, "env-kp-456");
+		delete process.env.GOG_KEYRING_PASSWORD;
+	});
+
+	test("missing password file does not break the child (keyring unset)", async () => {
+		delete process.env.GOG_KEYRING_PASSWORD;
+		fs.rmSync(path.join(tmp, ".gog-keyring-password"), { force: true });
+		const probe = path.join(tmp, "probe-env.js");
+		fs.writeFileSync(
+			probe,
+			"console.log(JSON.stringify({ keyring: process.env.GOG_KEYRING_PASSWORD ?? null }));",
+		);
+		const runner = new ProductionGogRunner({ binary: process.execPath });
+		const result = await runner.run({
+			command: [probe],
+			exactCommands: ["probe"],
+			timeoutMs: 10_000,
+		});
+		assert.equal(result.exitCode, 0);
+		const envSeen = JSON.parse(result.stdout.trim());
+		assert.equal(envSeen.keyring, null);
+	});
 });
 
 describe("shell injection safety", () => {

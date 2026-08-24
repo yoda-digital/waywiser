@@ -137,6 +137,18 @@ export class ProductionGogRunner implements GogRunner {
 		const env = { ...process.env };
 		// Remove potentially dangerous env vars — never pass tokens from tool input
 		delete env.GOG_ACCESS_TOKEN;
+
+		// gog's file keyring needs GOG_KEYRING_PASSWORD in non-TTY contexts
+		// (agents, cron, services). Read the locally-stored password if the
+		// variable is not already set elsewhere.
+		if (env.GOG_KEYRING_PASSWORD) return env;
+		try {
+			const pwFile = path.join(waywiserHome(), ".gog-keyring-password");
+			const pw = fs.readFileSync(pwFile, "utf8").trim();
+			if (pw) env.GOG_KEYRING_PASSWORD = pw;
+		} catch {
+			// No password file — gog will report the missing keyring secret itself.
+		}
 		return env;
 	}
 }
