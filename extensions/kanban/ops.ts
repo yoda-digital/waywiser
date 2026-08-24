@@ -16,6 +16,7 @@ import * as path from "node:path";
 import { db_, waywiserHome } from "../utils/state.js";
 import { generateStaticSnapshot } from "../kanban-html.js";
 import { broadcastEvent } from "../kanban-server.js";
+import { fmtStamp, fmtDateTime, fmtDuration } from "../utils/time.js";
 import {
 	STATUSES,
 	PRIORITIES,
@@ -53,26 +54,21 @@ export function setActiveBoardId(id: string): void {
 export function cardLine(c: CardRow): string {
 	const pri = c.priority && c.priority !== "med" ? ` [${c.priority}]` : "";
 	const typeTag = c.type === "idea" ? " 💡" : c.type === "bug" ? " 🐛" : "";
+	const age = c.status !== "done" && c.status !== "todo" ? ` ${fmtDuration(Date.now() - new Date(c.updated_at).getTime())}` : "";
 	const due = c.due
 		? c.status === "done"
-			? ` (was due ${c.due.slice(0, 16).replace("T", " ")})`
+			? ` (was due ${fmtDateTime(c.due)})`
 			: isOverdue(c)
-				? ` (OVERDUE since ${c.due.slice(0, 16).replace("T", " ")})`
-				: ` (due ${c.due.slice(0, 16).replace("T", " ")})`
+				? ` (OVERDUE since ${fmtDateTime(c.due)})`
+				: ` (due ${fmtDateTime(c.due)})`
 		: "";
-	return `${c.id}${pri} [${c.status}]${typeTag} ${c.title}${c.assignee ? ` → ${c.assignee}` : ""}${c.block_reason ? ` (block: ${c.block_reason})` : ""}${due}`;
+	return `${c.id}${pri} [${c.status}${age}]${typeTag} ${c.title}${c.assignee ? ` → ${c.assignee}` : ""}${c.block_reason ? ` (block: ${c.block_reason})` : ""}${due}`;
 }
 
 // ── Markdown export ───────────────────────────────────────────────────
-function fmtShortDate(iso: string): string {
-	const d = new Date(iso);
-	if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-	return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 function mdCardLine(c: CardRow): string {
 	const pri = c.priority && c.priority !== "med" ? ` \`${c.priority}\`` : "";
-	const due = c.due ? ` \`due:${fmtShortDate(c.due)}\`` : "";
+	const due = c.due ? ` \`due:${fmtStamp(c.due)}\`` : "";
 	const typeTag = c.type === "idea" ? " 💡idea" : c.type === "bug" ? " 🐛bug" : "";
 	const overdueTag = isOverdue(c) ? " ⚠️OVERDUE" : "";
 	const assignee = c.assignee ? ` → ${c.assignee}` : "";
@@ -108,7 +104,7 @@ export function generateMarkdown(board: BoardRow, cards: CardRow[]): string {
 
 	const doneRows = cards.filter((c) => c.status === "done");
 	if (doneRows.length) {
-		lines.push("", "## ✅ Done", ...doneRows.map((c) => `- [x] ~~${c.id} ${c.title}~~ · ${fmtShortDate(c.updated_at)}`));
+		lines.push("", "## ✅ Done", ...doneRows.map((c) => `- [x] ~~${c.id} ${c.title}~~ · ${fmtStamp(c.updated_at)}`));
 	}
 
 	return `${lines.join("\n")}\n`;
