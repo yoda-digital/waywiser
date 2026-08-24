@@ -72,8 +72,16 @@ export function extractTargetKey(toolName: string, input: Record<string, unknown
   switch (toolName) {
     case "read":
     case "edit":
-    case "write":
-      return normalizePath(String(input.file_path ?? ""), cwd);
+    case "write": {
+      // Pi's built-in read/edit/write tools use `path`; accept `file_path`
+      // for compatibility with other harnesses. Fall back to a sentinel key
+      // rather than normalizing "" to cwd — otherwise every pathless failure
+      // (e.g. edit blocked on a permission error) would all share one target.
+      const p = input.path ?? input.file_path;
+      return p !== undefined && p !== null
+        ? normalizePath(String(p), cwd)
+        : `${toolName}:?`;
+    }
 
     case "grep": {
       const pattern = String(input.pattern ?? "");

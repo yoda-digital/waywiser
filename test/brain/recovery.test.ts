@@ -27,15 +27,29 @@ describe("recovery", () => {
   describe("extractTargetKey", () => {
     it("extracts file path for read tool", () => {
       assert.equal(
-        extractTargetKey("read", { file_path: "/foo/bar.ts" }, "/cwd"),
+        extractTargetKey("read", { path: "/foo/bar.ts" }, "/cwd"),
         "/foo/bar.ts"
       );
     });
 
-    it("extracts file path for edit tool", () => {
+    it("extracts file path for edit tool (pi `path` param)", () => {
+      assert.equal(
+        extractTargetKey("edit", { path: "/foo/bar.ts" }, "/cwd"),
+        "/foo/bar.ts"
+      );
+      // legacy `file_path` still accepted
       assert.equal(
         extractTargetKey("edit", { file_path: "/foo/bar.ts" }, "/cwd"),
         "/foo/bar.ts"
+      );
+    });
+
+    it("does not collapse a pathless edit to cwd", () => {
+      // Regression: input lacked `path`, so normalizePath("") resolved to
+      // cwd and the failure's target key was the repo directory itself.
+      assert.equal(
+        extractTargetKey("edit", { edits: [{ oldText: "a", newText: "b" }] }, "/repo"),
+        "edit:?"
       );
     });
 
