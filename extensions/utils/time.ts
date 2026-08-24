@@ -147,6 +147,55 @@ export function fmtAge(v: string | number): string {
 	return diff >= 0 ? `${fmtDuration(diff)} ago` : `in ${fmtDuration(-diff)}`;
 }
 
+// ── smart formatter ───────────────────────────────────────────────────
+
+let cachedThreshold: number | undefined;
+let thresholdWarned = false;
+
+/**
+ * Read timeDisplay.relativeThresholdHours from ~/.waywiser/config.json,
+ * default 24. Cached per process (matches userTz caching policy).
+ * Invalid values fall back to 24 with a one-shot stderr warning.
+ */
+export function relativeThresholdHours(): number {
+	if (cachedThreshold !== undefined) return cachedThreshold;
+	try {
+		const cfg = readJSON<{ timeDisplay?: { relativeThresholdHours?: unknown } }>(configFile(), {});
+		const raw = cfg.timeDisplay?.relativeThresholdHours;
+		if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+			cachedThreshold = raw;
+			return cachedThreshold;
+		}
+		if (raw !== undefined && !thresholdWarned) {
+			process.stderr.write(`waywiser: invalid timeDisplay.relativeThresholdHours (${JSON.stringify(raw)}), using 24\n`);
+			thresholdWarned = true;
+		}
+	} catch {
+		// Config unreadable — fall through.
+	}
+	cachedThreshold = 24;
+	return cachedThreshold;
+}
+
+/**
+ * Age when recent, absolute stamp when old.
+ * "3h ago" for a memory touched yesterday afternoon,
+ * "Aug 20, 09:15" for something from 5 days ago.
+ * If thresholdHours is omitted, reads from config (relativeThresholdHours()).
+ */
+export function fmtSmart(v: string | number, thresholdHours?: number): string {
+	const ms = parseTs(v);
+	const t = thresholdHours ?? relativeThresholdHours();
+	const ageHours = (Date.now() - ms) / 3_600_000;
+	return ageHours <= t ? fmtAge(v) : fmtStamp(v);
+}
+
+/** Test-only: clear cached values. Safe to call in prod (would just re-read next call). */
+export function _resetTimeCaches(): void {
+	cachedThreshold = undefined;
+	thresholdWarned = false;
+}
+
 // ── convenience ───────────────────────────────────────────────────────
 
 /** Current time as ISO string. */
