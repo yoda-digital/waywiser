@@ -1,0 +1,32 @@
+{
+	"gogBinary": "gog",
+	"accounts": [],
+	"calendar": {
+		"defaultCalendar": "primary",
+		"timeouts": {
+			"readMs": 30000,
+			"writeMs": 30000,
+			"schemaMs": 10000,
+			"authCheckMs": 15000
+		},
+		"limits": {
+			"stdoutBytes": 4194304,
+			"stderrBytes": 262144,
+			"multiAccountConcurrency": 4,
+			"maxPageResults": 2500
+		},
+		"projection": {
+			"enabled": true,
+			"pastHours": 24,
+			"futureDays": 14,
+			"refreshMinutes": 15,
+			"staleAfterMinutes": 45
+		},
+		"safety": {
+			"wrapUntrustedReads": true,
+			"exactCommandAllowlist": true,
+			"readonlyReads": true,
+			"dryRunWrites": true
+		}
+	}
+}

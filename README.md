@@ -6,25 +6,25 @@
 > no cloud sync. Your LLM runs on your hardware or behind your own API key.
 
 A proactive personal AI agent built on [pi](https://github.com/earendil-works/pi-coding-agent).
-Waywiser doesn't wait to be spoken to — it monitors your boards, goals, and
-deadlines, alerts you when something needs attention, adapts to your
-communication style, and learns from corrections in real time. Extends pi with
-persistent memory, a proactive cognition engine, behavioral meta-skills, task
-delegation, project boards, MCP integrations, scheduled jobs, notifications,
-and a permission engine — all as in-process TypeScript extensions. Nothing
-patches pi's core.
+Waywiser doesn't wait to be spoken to — it monitors your boards, goals,
+deadlines, and calendar, alerts you when something needs attention, adapts to
+your communication style, and learns from corrections in real time. Extends pi
+with persistent memory, a proactive cognition engine, behavioral meta-skills,
+task delegation, project boards, Google Calendar integration, MCP integrations,
+scheduled jobs, notifications, and a permission engine — all as in-process
+TypeScript extensions. Nothing patches pi's core.
 
 ## Architecture
 
 ```
 waywiser/
 ├── extensions/                      ← Core agent extensions
-│   ├── permissions.ts               ← Permission engine (risk taxonomy, planning mode, budgets)
+│   ├── permissions.ts               ← Permission engine (9 risk classes, extensible classifiers, approval leases)
 │   ├── soul.ts                      ← SOUL.md identity persistence (append-only)
 │   ├── memory.ts                    ← Cross-session memory (FTS5, RecallProvider, deterministic gate)
 │   ├── memrules.ts                  ← Memory rules (gate patterns, Jaccard, validation)
 │   ├── mem-dream.ts                 ← Memory consolidation (dedup, merge, conflicts)
-│   ├── proactive.ts                 ← Proactive cognition engine (OODA loop, signal gathering)
+│   ├── proactive.ts                 ← Proactive cognition engine (OODA loop, signal gathering, calendar awareness)
 │   ├── meta-skills.ts               ← Behavioral engines (EQ, discretion, adaptability, multi-tasking)
 │   ├── brain/                       ← Persistent memory with procedural preferences (core — always loaded)
 │   │   ├── index.ts                 ← Brain lifecycle (session, learning boundary, vault sync)
@@ -66,6 +66,7 @@ waywiser/
 │   ├── index.ts                     ← Extension loader (fault-isolated, prompt assembly handler)
 │   └── utils/
 │       ├── state.ts                 ← Shared DB (SQLite WAL), registry, config, RecallProvider interface
+│       ├── tool-policy.ts           ← Extensible tool risk classifiers (plugin registration)
 │       ├── rpc.ts                   ← Pi RPC client + warm pool (lane-versioned, TTL-evicted)
 │       ├── llmcall.ts               ← One-shot LLM child (queue-based semaphore, no deadlock)
 │       ├── prompt-budget.ts         ← Priority-based prompt injection manager (cache telemetry)
@@ -73,6 +74,26 @@ waywiser/
 │       └── url-guard.ts             ← SSRF protection (RFC1918, link-local, loopback, IPv6)
 │
 ├── plugins/
+│   ├── google-workspace/            ← Google Calendar integration via gog CLI
+│   │   ├── shared/                  ← Shared infra (reusable for future Gmail, Drive, etc.)
+│   │   │   ├── gog-runner.ts        ← GogRunner interface + ProductionGogRunner (shell:false, caps, abort)
+│   │   │   ├── gog-contract.ts      ← Runtime capability probe (gog schema, contract cache)
+│   │   │   ├── gog-errors.ts        ← Exit code → CalendarErrorCode semantic mapping
+│   │   │   └── accounts.ts          ← Account routing (alias, default, multi-account)
+│   │   ├── extensions/calendar/     ← Calendar semantic capability (loaded by bin/waywiser plugin discovery)
+│   │   │   ├── index.ts             ← Plugin entry (risk classifier, projection, tool registration)
+│   │   │   ├── tool.ts              ← Semantic `calendar` tool — 30+ actions dispatched
+│   │   │   ├── operations.ts        ← Operation manifest — single source of truth (dispatch + permissions)
+│   │   │   ├── types.ts             ← CalendarAction, CalendarEvent, CalendarStatus, OperationSpec
+│   │   │   ├── invocation.ts        ← Safety flag assembly (--readonly, --exact, --wrap-untrusted)
+│   │   │   ├── normalize.ts         ← Raw gog JSON → CalendarEvent normalization
+│   │   │   ├── idempotency.ts       ← Operation journal + Google-compatible event ID generation
+│   │   │   └── projection.ts        ← Materialized SQLite projection for proactive SENSE
+│   │   ├── skills/google-workspace/
+│   │   │   └── SKILL.md             ← PA skill (safety rules, operations catalog, patterns)
+│   │   └── config/
+│   │       └── google-workspace.example.json  ← Default config (accounts, timeouts, safety)
+│   │
 │   └── obsidian/                    ← Obsidian integration (optional add-on)
 │       ├── src/                     ← Plugin source (dashboard, commands, graph, watcher)
 │       ├── main.js                  ← Built plugin
@@ -116,9 +137,18 @@ waywiser/
 ├── test/
 │   ├── waywiser.test.ts             ← Core unit tests (memory, gate, recall, goals, traces, meta-skills)
 │   ├── smoke.test.ts                ← Extension registration smoke test
-│   ├── permissions.test.ts          ← Permission engine tests (classifier, policy, budget, planning)
+│   ├── permissions.test.ts          ← Permission engine tests (classifier, policy, budget, planning, plugins)
 │   ├── prompt-budget.test.ts        ← Prompt budget manager tests (ordering, trimming, cache)
 │   ├── brain/                       ← Brain unit tests (18 files, 332 tests)
+│   ├── google-workspace/            ← Google Calendar plugin tests (8 files, 306 tests)
+│   │   ├── gog-runner.test.ts            ← FakeGogRunner, shell injection safety
+│   │   ├── gog-contract.test.ts          ← Capability probe, schema validation
+│   │   ├── calendar-operations.test.ts   ← All 30 actions, risk mapping, manifest completeness
+│   │   ├── calendar-safety.test.ts       ← Read path defense-in-depth (140 assertions)
+│   │   ├── calendar-normalize.test.ts    ← Event normalization (timed, all-day, conference, recurring)
+│   │   ├── calendar-errors.test.ts       ← Exit code → error code mapping
+│   │   ├── calendar-idempotency.test.ts  ← Event ID generation, operation journal
+│   │   └── calendar-projection.test.ts   ← Transactional snapshot, stale handling, isolation
 │   ├── security/
 │   │   ├── execute-code-sandbox.test.ts  ← vm.createContext sandbox escape prevention
 │   │   ├── url-guard.test.ts             ← SSRF URL blocking
@@ -162,7 +192,9 @@ working hours, daily/weekly reviews, notification channels.
 
 **Proactive intelligence:**
 - Proactive cognition engine — OODA loop ticks every 15 min, monitors
-  boards/goals/deadlines, alerts without consuming GPU
+  boards/goals/deadlines/calendar, alerts without consuming GPU
+- Calendar awareness — meeting-soon alerts, conflict detection, overloaded-day
+  warnings from materialized projection (SQL-only, zero network in SENSE)
 - Emotional intelligence — detects frustration from message patterns,
   adapts communication style in real time
 - Discretion — suppresses low-value alerts during deep focus, caps
@@ -184,23 +216,67 @@ working hours, daily/weekly reviews, notification channels.
 - SOUL.md identity with consolidation
 
 **Tools & integrations:**
+- Google Calendar via [gog](https://github.com/openclaw/gogcli) — semantic
+  `calendar` tool with 30+ operations (events, freebusy, conflicts, create,
+  update, respond, focus-time, OOO, working-location), defense-in-depth read
+  safety, write idempotency, materialized projection for proactive
 - Task delegation (3 concurrent subagents, depth-capped at 2)
 - Kanban boards (authenticated web dashboard + TUI + markdown)
-- MCP integrations (Gmail, Calendar, Notion, etc.)
+- MCP integrations (Gmail, Drive, Notion, etc.)
 - Scheduled jobs (cron + one-shot timers, auto-pause on repeated failures)
 - Desktop/Telegram/webhook notifications
 - 19 PA playbooks covering time management, writing, communication,
   research, finance, travel, procurement, governance, and more
 
 **Safety & observability:**
-- Permission engine (8 risk classes, configurable policy, /permissions)
-- Planning mode (/plan blocks writes, /plan approve re-enables)
+- Permission engine (9 risk classes including `unclassified` fail-closed,
+  extensible plugin classifiers, configurable policy, /permissions)
+- Approval leases — scoped preauthorization for headless/proactive operations
+  (tool + action + account + time window + max executions)
+- Planning mode (/plan blocks writes, /plan approve re-enables; allows
+  read_only + network + mcp_read)
 - Session budgets (200 tool calls, 10 subagent spawns)
+- Calendar read safety — exact command allowlist + readonly transport guard +
+  untrusted content wrapping on every live read
 - Sandboxed code execution (vm.createContext + optional Gondolin micro-VM)
 - SSRF protection on web tools
 - Structured trace events (/trace export)
 - Goal budgets (/goal --max-steps --deadline --done)
 - Prompt cache telemetry (/waywiser status)
+
+### Google Calendar
+
+Requires [gog](https://github.com/openclaw/gogcli) (`v0.37.0+`, schema_version 1).
+
+```bash
+# Install gog, then authenticate
+gog auth add
+
+# Configure Waywiser
+cat ~/.waywiser/google-workspace.json
+# → Add your account(s) to "accounts" array:
+#   { "email": "you@example.com", "alias": "personal", "default": true }
+```
+
+The `calendar` tool auto-discovers via plugin loading — no code changes
+needed. Capabilities are validated at runtime via `gog schema`, not pinned
+to a version string. The proactive engine picks up calendar signals
+(meeting-soon, conflicts, overloaded-day) automatically from the
+materialized SQLite projection.
+
+**Architecture:**
+
+```
+Pi / LLM  →  calendar(action=events, ...)   (semantic tool, no CLI knowledge)
+    ↓
+Waywiser  →  permissions (risk classify → planning gate → approval)
+    ↓
+Plugin    →  operation manifest → invocation builder → safety flags
+    ↓
+GogRunner →  spawn("gog", argv, { shell: false })
+    ↓
+gog CLI   →  Google Calendar API
+```
 
 ### Optional: Obsidian Plugin
 
@@ -224,7 +300,8 @@ user interactions. Every 15 minutes (30 during quiet hours), it:
 
 1. **Senses** — SQL-only signal gathering (zero LLM cost): overdue kanban
    cards, goals past deadline, goals near budget, cron failures, evolution
-   candidates, user absence
+   candidates, user absence, calendar meeting-soon, calendar conflicts,
+   calendar overloaded-day (from materialized projection)
 2. **Orients** — priority scores each signal (P0 interrupt → P3
    background), deduplicates (1-hour window), applies discretion filter
 3. **Decides + Acts** — P0 alerts via desktop/Telegram (no GPU); P1-P2
@@ -252,7 +329,7 @@ Six cross-cutting meta-skills implemented as runtime behavioral engines:
 |------------|--------|-------------|
 | **Emotional Intelligence** | `meta-skills.ts` | Analyzes message patterns at turn_end (short replies, corrections, caps); injects communication guidance into system prompt |
 | **Discretion** | `meta-skills.ts` | Filters proactive notifications; max 3/hour; suppresses during deep conversations (>5 turns); never sends sensitive content externally |
-| **Anticipatory Thinking** | `proactive.ts` | OODA loop scans calendar, boards, goals every 15 min; prepares before deadlines hit |
+| **Anticipatory Thinking** | `proactive.ts` | OODA loop scans boards, goals, calendar projection every 15 min; detects upcoming meetings, conflicts, overloaded days; prepares before deadlines hit |
 | **Adaptability** | `meta-skills.ts` | Detects corrections instantly; creates memories and injects one-turn adjustment notes ("no, use X" → immediate memory + style shift) |
 | **Multi-tasking** | `meta-skills.ts` | Spawns background subagents for kanban cards assigned to "subagent" during idle periods |
 | **Continuous Learning** | Brain `learner.ts` | Two-pass learning at conversation boundaries: deterministic extraction (CPU, ~1ms) + LLM reflection (nuanced signals) |
@@ -283,11 +360,24 @@ initializes the PA kanban board.
 
 ## Security
 
-- **Permission engine** — 8 risk classes (read_only, write_local,
-  process_exec, communication, network, scheduling, mcp_read, mcp_write).
-  Policy per class: allow, block, ask_user, log_only. `/permissions`
-- **Planning mode** — `/plan` blocks writes; `/plan approve` re-enables
+- **Permission engine** — 9 risk classes (read_only, write_local,
+  process_exec, communication, network, scheduling, mcp_read, mcp_write,
+  unclassified). Policy per class: allow, block, ask_user, log_only.
+  Unknown tools → `unclassified` → `block` (fail-closed). `/permissions`
+- **Extensible classifiers** — plugins register per-tool risk classifiers
+  via `registerToolRiskClassifier()`. Calendar plugin classifies each action
+  (events → read_only, create → scheduling, respond → communication)
+- **Approval leases** — scoped preauthorization for headless/proactive
+  operations. Constrained by tool, action, account, calendar, time window,
+  and max executions. No global `allow calendar`
+- **Planning mode** — `/plan` blocks writes; `/plan approve` re-enables.
+  Allows read_only + network + mcp_read. Allowlist never bypasses planning
 - **Session budgets** — 200 tool calls, 10 spawns (configurable)
+- **Calendar read safety** — every live read uses `--readonly` +
+  `--enable-commands-exact` + `--no-input` + `--wrap-untrusted` + `--json`.
+  Model cannot construct arbitrary gog argv
+- **Write idempotency** — deterministic Google-compatible event IDs +
+  operation journal prevents duplicate creation on retry
 - **Sandbox** — `vm.createContext(Object.create(null))` + 5s timeout;
   optional [gondolin](https://github.com/earendil-works/gondolin) micro-VM
 - **SSRF guard** — blocks RFC1918, link-local, loopback, IPv6 ULA in
@@ -301,8 +391,9 @@ All config lives in `~/.waywiser/`:
 
 | File | Purpose |
 |---|---|
-| `waywiser.db` | SQLite database (memory, boards, cron, goals, brain) |
+| `waywiser.db` | SQLite database (memory, boards, cron, goals, brain, calendar projection, approval leases) |
 | `brain.json` | Brain config (recall, embeddings, vault, evolution) |
+| `google-workspace.json` | Google Calendar config (accounts, timeouts, projection, safety flags) |
 | `config.json` | Global config (prompt budget, execute_code backend, proactive engine) |
 | `permissions.json` | Permission policy (risk class defaults, per-tool overrides, allowlist) |
 | `SOUL.md` | Agent identity and preferences (append-only) |
@@ -319,11 +410,13 @@ All config lives in `~/.waywiser/`:
 ## Tests
 
 ```bash
-# Everything — core + security + proactive + meta-skills + Brain (85 suites)
-# test/brain/ is discovered by this recursive glob, Brain is no longer separate
-npm test                                            # 528 tests (522 pass, 6 e2e skip)
+# Everything — core + security + proactive + meta-skills + Brain + Calendar
+npm test                                            # 760+ tests
 
-# Brain only (76 suites, subset of the above)
+# Google Calendar plugin only (8 suites, 306 tests)
+node --test test/google-workspace/*.test.ts
+
+# Brain only (76 suites)
 npm run test:brain                                  # 332 tests
 
 # End-to-end evals (requires a running LLM)
