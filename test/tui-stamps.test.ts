@@ -1,0 +1,120 @@
+import { describe, it, before, after, beforeEach } from "node:test";
+import * as assert from "node:assert/strict";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as os from "node:os";
+import { createJiti } from "jiti";
+
+const jiti = createJiti(import.meta.url);
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "ww-tuistamps-test-"));
+process.env.WAYWISER_HOME = tmp;
+
+const mod = jiti("../extensions/tui-stamps.js") as {
+  default: (pi: unknown) => void;
+  _makeStampCache: (cap?: number) => {
+    get: (key: string, nowMs: number) => number;
+    evictPrefix: (prefix: string) => void;
+    clear: () => void;
+    size: () => number;
+  };
+  _stampKey: (messageType: string, md: string) => string;
+  _renderStampPrefix: (nowMs: number, style: "code" | "plain") => string;
+  _loadConfig: () => { enabled: boolean; style: "code" | "plain" };
+};
+
+function writeConfig(cfg: object): void {
+  fs.writeFileSync(path.join(tmp, "config.json"), JSON.stringify(cfg));
+}
+function clearConfig(): void {
+  try { fs.unlinkSync(path.join(tmp, "config.json")); } catch { /* ok */ }
+}
+
+after(() => {
+  delete process.env.WAYWISER_HOME;
+  fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("_stampKey", () => {
+  it("prefixes with messageType and truncates markdown to 40 chars", () => {
+    const md = "hello world ".repeat(10);
+    const key = mod._stampKey("user", md);
+    assert.ok(key.startsWith("user|"));
+    assert.equal(key.length, "user|".length + 40);
+  });
+
+  it("keeps short markdown intact", () => {
+    assert.equal(mod._stampKey("assistant", "hi"), "assistant|hi");
+  });
+});
+
+describe("_makeStampCache", () => {
+  it("pins the first observed timestamp for a key", () => {
+    const c = mod._makeStampCache(64);
+    const first = c.get("user|abc", 1000);
+    const second = c.get("user|abc", 2000);
+    assert.equal(first, 1000);
+    assert.equal(second, 1000);
+  });
+
+  it("returns fresh timestamp after evictPrefix", () => {
+    const c = mod._makeStampCache(64);
+    c.get("user|hello world", 1000);
+    c.evictPrefix("user|hello");
+    const after = c.get("user|hello world", 2000);
+    assert.equal(after, 2000);
+  });
+
+  it("clear() empties the cache", () => {
+    const c = mod._makeStampCache(64);
+    c.get("k", 1000);
+    c.clear();
+    assert.equal(c.size(), 0);
+    assert.equal(c.get("k", 2000), 2000);
+  });
+
+  it("LRU-evicts oldest entries when at capacity", () => {
+    const c = mod._makeStampCache(2);
+    c.get("a", 1000);
+    c.get("b", 2000);
+    c.get("c", 3000);              // evicts "a"
+    c.get("b", 3500);              // refresh "b" to make it more recent than "c"
+    assert.equal(c.get("a", 4000), 4000);   // fresh stamp — "a" was evicted, "c" is evicted now
+    assert.equal(c.get("b", 5000), 2000);   // "b" still cached
+  });
+});
+
+describe("_renderStampPrefix", () => {
+  it("wraps stamp in backticks in code style, ends with a space", () => {
+    const out = mod._renderStampPrefix(Date.now(), "code");
+    assert.match(out, /^`\[.+\]`\s$/);
+  });
+
+  it("uses bare brackets in plain style, ends with a space", () => {
+    const out = mod._renderStampPrefix(Date.now(), "plain");
+    assert.match(out, /^\[.+\]\s$/);
+    assert.ok(!out.startsWith("`"));
+  });
+});
+
+describe("_loadConfig", () => {
+  beforeEach(clearConfig);
+
+  it("defaults to enabled=true, style=code when absent", () => {
+    assert.deepEqual(mod._loadConfig(), { enabled: true, style: "code" });
+  });
+
+  it("reads enabled=false from tuiStamps.enabled", () => {
+    writeConfig({ tuiStamps: { enabled: false } });
+    assert.equal(mod._loadConfig().enabled, false);
+  });
+
+  it("reads style=plain from tuiStamps.style", () => {
+    writeConfig({ tuiStamps: { style: "plain" } });
+    assert.equal(mod._loadConfig().style, "plain");
+  });
+
+  it("ignores unknown style value, falls back to code", () => {
+    writeConfig({ tuiStamps: { style: "rainbow" } });
+    assert.equal(mod._loadConfig().style, "code");
+  });
+});
