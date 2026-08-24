@@ -1,0 +1,77 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# waywiser-gog-login — one-shot Google Workspace auth for Termux.
+#
+# Registers the OAuth client with gog (from ~/.waywiser/google-oauth-client.json),
+# runs `gog auth add <email>` (browser callback on localhost works fine on Android
+# because Chrome hits the phone's own loopback), records the account in
+# ~/.waywiser/google-workspace.json, and verifies with a read-only calendar call.
+#
+# Safe to re-run: credentials set replaces, account entry is deduped, and
+# `gog auth add` refreshes the stored refresh token.
+#
+# Usage:  waywiser-gog-login [email]
+#         (falls back to the default account in google-workspace.json)
+
+set -euo pipefail
+
+HOME_DIR="${HOME:-/data/data/com.termux/files/home}"
+WAYWISER_DIR="${WAYWISER_HOME:-$HOME_DIR/.waywiser}"
+CLIENT_JSON="$WAYWISER_DIR/google-oauth-client.json"
+WORKSPACE_JSON="$WAYWISER_DIR/google-workspace.json"
+KEYRING_PASS_FILE="$WAYWISER_DIR/.gog-keyring-password"
+
+die() { printf 'waywiser-gog-login: %s\n' "$*" >&2; exit 1; }
+
+command -v gog >/dev/null || die "gog CLI not found in PATH"
+command -v jq  >/dev/null || die "jq not found (pkg install jq)"
+
+[[ -f "$CLIENT_JSON"    ]] || die "missing $CLIENT_JSON (download OAuth client JSON from Google Cloud Console)"
+[[ -f "$WORKSPACE_JSON" ]] || die "missing $WORKSPACE_JSON (copy from plugins/google-workspace/config/google-workspace.example.json)"
+
+# gog's file keyring needs a password; Termux has no TTY prompt path from
+# non-interactive shells. Persist a random password on first run and export
+# it for every subsequent gog call.
+if [[ ! -f "$KEYRING_PASS_FILE" ]]; then
+	printf '→ generating keyring password at %s\n' "$KEYRING_PASS_FILE"
+	umask 077
+	head -c 32 /dev/urandom | base64 > "$KEYRING_PASS_FILE"
+	chmod 600 "$KEYRING_PASS_FILE"
+fi
+export GOG_KEYRING_PASSWORD
+GOG_KEYRING_PASSWORD="$(cat "$KEYRING_PASS_FILE")"
+
+EMAIL="${1:-}"
+if [[ -z "$EMAIL" ]]; then
+	EMAIL="$(jq -r '(.accounts // []) | (map(select(.default==true)) + .)[0].email // empty' "$WORKSPACE_JSON")"
+fi
+[[ -n "$EMAIL" ]] || die "no email provided and no account in $WORKSPACE_JSON — usage: waywiser-gog-login <email>"
+
+printf '→ registering OAuth client from %s\n' "$CLIENT_JSON"
+gog auth credentials set "$CLIENT_JSON" >/dev/null
+
+printf '→ authorizing %s (Android browser will open; sign in and approve)\n' "$EMAIL"
+gog auth add "$EMAIL"
+
+printf '→ recording account in %s\n' "$WORKSPACE_JSON"
+tmp="$(mktemp "${TMPDIR:-$HOME_DIR/tmp}/gog-login.XXXXXX.json")"
+jq --arg email "$EMAIL" '
+	. as $root
+	| ($root.accounts // []) as $accts
+	| ($accts | map(.email) | index($email)) as $idx
+	| if $idx != null then
+		$root
+	elif ($accts | length) == 0 then
+		$root | .accounts = [{email: $email, default: true}]
+	else
+		$root | .accounts = ($accts + [{email: $email}])
+	end
+' "$WORKSPACE_JSON" > "$tmp"
+mv "$tmp" "$WORKSPACE_JSON"
+chmod 600 "$WORKSPACE_JSON"
+
+printf '→ verifying: gog calendar calendars --account %s\n' "$EMAIL"
+if gog calendar calendars --account "$EMAIL" --json --results-only --no-input >/dev/null; then
+	printf '✓ %s ready. Calendars visible; refresh token stored in keyring.\n' "$EMAIL"
+else
+	die "verification call failed — check 'gog auth doctor'"
+fi

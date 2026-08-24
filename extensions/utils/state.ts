@@ -155,7 +155,23 @@ export function db_(): DatabaseSync {
 			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 		);
 
-		INSERT OR IGNORE INTO boards (id, name) VALUES ('default', 'Default');`,
+		INSERT OR IGNORE INTO boards (id, name) VALUES ('default', 'Default');
+
+		CREATE TABLE IF NOT EXISTS approval_leases (
+			id TEXT PRIMARY KEY,
+			tool TEXT NOT NULL,
+			actions TEXT NOT NULL,
+			account TEXT,
+			calendar_ids TEXT,
+			origin_type TEXT NOT NULL,
+			origin_id TEXT NOT NULL,
+			valid_from TEXT NOT NULL,
+			valid_until TEXT,
+			max_executions INTEGER,
+			executions INTEGER NOT NULL DEFAULT 0,
+			constraints TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);`,
 	);
 	return db;
 }
@@ -308,6 +324,8 @@ export interface WaywiserRegistry {
 	budget: SessionBudget;
 	/** Recall-enhancing plugin. Brain registers this at session_start. */
 	recallProvider?: RecallProvider;
+	/** Per-tool risk classifiers registered by plugins (blueprint §4.1). */
+	toolRiskClassifiers: Map<string, (input: Record<string, unknown>) => string>;
 }
 
 const registry: WaywiserRegistry = {
@@ -321,6 +339,7 @@ const registry: WaywiserRegistry = {
 		toolCallCount: 0,
 		subagentSpawnCount: 0,
 	},
+	toolRiskClassifiers: new Map(),
 };
 
 export function registry_(): WaywiserRegistry {

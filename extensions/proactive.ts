@@ -209,8 +209,10 @@ export function gatherSignals(db: DatabaseSync, opts?: { lastAgentStartAt?: numb
 		}
 	}
 
-	// Plug-in providers (mobile-context, future sensors). Each is isolated —
-	// a throwing provider only loses its own signals, never the built-ins.
+	// Plug-in providers (mobile-context, calendar, future sensors). Each is
+	// isolated — a throwing provider only loses its own signals, never the
+	// built-ins. Calendar signals live in plugins/google-workspace/extensions/
+	// calendar/signals.ts, registered via registerSignalProvider().
 	for (const provider of signalProviders) {
 		try {
 			const extra = provider(db, opts);
