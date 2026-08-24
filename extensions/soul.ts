@@ -11,6 +11,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import { homeFile, registry_ } from "./utils/state.js";
 import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
+import { fmtDateOnly } from "./utils/time.js";
 
 export default function soul(pi: ExtensionAPI): void {
 	let soulContent = "";
@@ -134,7 +135,7 @@ export default function soul(pi: ExtensionAPI): void {
 			const text = (params.text ?? "").trim();
 			if (!text) return err("action " + params.action + " requires non-empty text");
 			const section = params.action === "append_preference" ? "## Preferences" : "## Lessons learned";
-			const stamp = new Date().toISOString().slice(0, 10);
+			const stamp = fmtDateOnly(Date.now());
 			const line = `- ${text}${section === "## Lessons learned" ? `  (${stamp})` : ""}`;
 
 			let content = "";
