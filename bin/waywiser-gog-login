@@ -49,8 +49,15 @@ fi
 printf '→ registering OAuth client from %s\n' "$CLIENT_JSON"
 gog auth credentials set "$CLIENT_JSON" >/dev/null
 
-printf '→ authorizing %s (Android browser will open; sign in and approve)\n' "$EMAIL"
-gog auth add "$EMAIL"
+# Waywiser only calls `gog calendar …`. Requesting `--services=user` (gog's
+# default) asks for 40+ scopes across Gmail/Drive/Ads/YouTube/etc., which
+# Google rejects with "Sorry, something went wrong there" whenever any of
+# those APIs is not enabled on the Cloud project or the scope is restricted
+# and the OAuth client is unverified.
+GOG_SERVICES="${WAYWISER_GOG_SERVICES:-calendar}"
+
+printf '→ authorizing %s for services=%s (Android browser will open; sign in and approve)\n' "$EMAIL" "$GOG_SERVICES"
+gog auth add "$EMAIL" --services "$GOG_SERVICES"
 
 printf '→ recording account in %s\n' "$WORKSPACE_JSON"
 tmp="$(mktemp "${TMPDIR:-$HOME_DIR/tmp}/gog-login.XXXXXX.json")"
