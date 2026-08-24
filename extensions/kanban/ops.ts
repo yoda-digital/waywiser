@@ -45,6 +45,9 @@ let activeBoardId = "default";
 export function getActiveBoardId(): string {
 	return activeBoardId;
 }
+export function setActiveBoardId(id: string): void {
+	activeBoardId = id;
+}
 
 // ── card line (TUI/tool text) ────────────────────────────────────────
 export function cardLine(c: CardRow): string {

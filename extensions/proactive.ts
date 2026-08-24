@@ -260,6 +260,109 @@ export function gatherSignals(db: DatabaseSync, opts?: { lastAgentStartAt?: numb
 		}
 	} catch { /* calendar_projection table may not exist */ }
 
+	// 10. Kanban: cards due within 24 hours (early warning before overdue).
+	const dueSoon = db
+		.prepare(
+			`SELECT id, title, due FROM cards
+			 WHERE due IS NOT NULL
+			   AND datetime(due) > datetime('now')
+			   AND datetime(due) <= datetime('now', '+24 hours')
+			   AND status NOT IN ('done')
+			 ORDER BY due LIMIT 5`,
+		)
+		.all() as Array<{ id: string; title: string; due: string }>;
+	if (dueSoon.length) {
+		signals.push({
+			key: "cards-due-soon",
+			priority: 2,
+			requiresLLM: true,
+			title: "Cards due soon",
+			body: `${dueSoon.length} card(s) due within 24h: ${dueSoon.map((c) => `${c.title} (due ${c.due})`).join(", ")}`,
+		});
+	}
+
+	// 11. Kanban: stale doing cards (in 'doing' with no update for >24h).
+	const staleDoing = db
+		.prepare(
+			`SELECT id, title, updated_at FROM cards
+			 WHERE status = 'doing'
+			   AND datetime(updated_at) < datetime('now', '-24 hours')
+			 ORDER BY updated_at LIMIT 5`,
+		)
+		.all() as Array<{ id: string; title: string; updated_at: string }>;
+	if (staleDoing.length) {
+		signals.push({
+			key: "cards-stale-doing",
+			priority: 2,
+			requiresLLM: true,
+			title: "Stale cards in progress",
+			body: `${staleDoing.length} card(s) stuck in 'doing' for >24h: ${staleDoing.map((c) => `${c.title} (since ${c.updated_at})`).join(", ")}`,
+		});
+	}
+
+	// 12. Kanban: blocked cards aging (blocked for >24h without resolution).
+	const blockedAging = db
+		.prepare(
+			`SELECT id, title, block_reason, updated_at FROM cards
+			 WHERE status = 'blocked'
+			   AND datetime(updated_at) < datetime('now', '-24 hours')
+			 ORDER BY updated_at LIMIT 5`,
+		)
+		.all() as Array<{ id: string; title: string; block_reason: string | null; updated_at: string }>;
+	if (blockedAging.length) {
+		signals.push({
+			key: "cards-blocked-aging",
+			priority: 1,
+			requiresLLM: true,
+			title: "Blocked cards need attention",
+			body: `${blockedAging.length} card(s) blocked for >24h: ${blockedAging.map((c) => `${c.title}${c.block_reason ? ` (${c.block_reason})` : ""}`).join(", ")}`,
+		});
+	}
+
+	// 13. Kanban: orphaned workers (worker_child set but card not updated
+	//     for >30 min — worker likely crashed; max worker timeout is 15 min).
+	const orphanedWorkers = db
+		.prepare(
+			`SELECT id, title, worker_child, updated_at FROM cards
+			 WHERE worker_child IS NOT NULL
+			   AND status = 'doing'
+			   AND datetime(updated_at) < datetime('now', '-30 minutes')
+			 ORDER BY updated_at LIMIT 5`,
+		)
+		.all() as Array<{ id: string; title: string; worker_child: string; updated_at: string }>;
+	if (orphanedWorkers.length) {
+		signals.push({
+			key: "cards-orphaned-worker",
+			priority: 1,
+			requiresLLM: true,
+			title: "Orphaned card workers",
+			body: `${orphanedWorkers.length} card(s) have a worker assigned but no update for >30min (worker may have crashed): ${orphanedWorkers.map((c) => `${c.id} ${c.title} (worker ${c.worker_child})`).join(", ")}`,
+		});
+	}
+
+	// 14. Kanban: planning board complete (all cards on a plan-* board are done).
+	const completePlanBoards = db
+		.prepare(
+			`SELECT b.id, b.name, COUNT(*) as total
+			 FROM boards b
+			 JOIN cards c ON c.board_id = b.id
+			 WHERE b.id LIKE 'plan-%'
+			   AND b.archived = 0
+			 GROUP BY b.id
+			 HAVING total = SUM(CASE WHEN c.status = 'done' THEN 1 ELSE 0 END)
+			   AND total > 0`,
+		)
+		.all() as Array<{ id: string; name: string; total: number }>;
+	if (completePlanBoards.length) {
+		signals.push({
+			key: "board-plan-complete",
+			priority: 2,
+			requiresLLM: true,
+			title: "Planning board complete",
+			body: `${completePlanBoards.length} planning board(s) have all cards done: ${completePlanBoards.map((b) => `${b.name} (${b.total} cards)`).join(", ")}. Consider archiving and evaluating the goal.`,
+		});
+	}
+
 	return signals;
 }
 

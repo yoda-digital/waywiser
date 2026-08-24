@@ -12,7 +12,8 @@
 import * as http from "node:http";
 import { randomBytes } from "node:crypto";
 import { db_ } from "./utils/state.js";
-import { CARD_ORDER, nextCardId, slugify, type CardRow } from "./kanban/shared.js";
+import { CARD_ORDER, nextCardId, slugify, ensureBoard, type CardRow } from "./kanban/shared.js";
+import { getActiveBoardId, setActiveBoardId } from "./kanban/ops.js";
 
 // SSE clients
 const sseClients = new Set<http.ServerResponse>();
@@ -214,6 +215,17 @@ function handleApi(method: string, reqPath: string, body: Record<string, unknown
 			d.prepare("DELETE FROM boards WHERE id = ?").run(boardId);
 			broadcastEvent("board_changed", { boardId, action: "deleted" });
 			return json({ ok: true });
+		}
+
+		// PUT /api/active-board — switch the server's active board (used by the SPA)
+		if (method === "PUT" && reqPath === "/api/active-board") {
+			const boardId = String(body.board ?? "").trim();
+			if (!boardId) return json({ error: "board required" }, 400);
+			const id = slugify(boardId);
+			ensureBoard(id, boardId);
+			setActiveBoardId(id);
+			broadcastEvent("board_changed", { boardId: id, action: "switched" });
+			return json({ activeBoard: id });
 		}
 
 		// GET /api/cards?board=xxx
