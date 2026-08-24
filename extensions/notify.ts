@@ -14,6 +14,7 @@ import { spawn } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import { waywiserHome, readJSON, writeJSON, registry_ } from "./utils/state.js";
+import { fmtTime } from "./utils/time.js";
 
 interface NotifyChannelDesktop {
 	enabled: boolean;
@@ -140,7 +141,7 @@ async function sendTelegram(token: string, chatId: string, title: string, body: 
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				chat_id: chatId,
-				text: `*${escapeMarkdown(title)}*\n${escapeMarkdown(body)}`,
+				text: `*${escapeMarkdown(title)}*\n_${fmtTime(Date.now())}_\n${escapeMarkdown(body)}`,
 				parse_mode: "Markdown",
 			}),
 		});
