@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import * as os from "node:os";
 import * as path from "node:path";
 import { waywiserHome, readJSON, writeJSON, registry_ } from "./utils/state.js";
-import { fmtTime } from "./utils/time.js";
+import { fmtStamp, fmtAge } from "./utils/time.js";
 
 interface NotifyChannelDesktop {
 	enabled: boolean;
@@ -201,7 +201,7 @@ async function sendTelegram(token: string, chatId: string, title: string, body: 
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
 				chat_id: chatId,
-				text: `*${escapeMarkdown(title)}*\n_${fmtTime(Date.now())}_\n${escapeMarkdown(body)}`,
+				text: `*${escapeMarkdown(title)}*\n_${fmtStamp(Date.now())}_\n${escapeMarkdown(body)}`,
 				parse_mode: "Markdown",
 			}),
 		});
@@ -284,12 +284,26 @@ async function sendTermux(
 	});
 }
 
-async function sendWebhook(url: string, headers: Record<string, string> | undefined, title: string, body: string): Promise<{ ok: boolean; error?: string }> {
+export function buildWebhookPayload(title: string, body: string, level: string, nowMs: number = Date.now()): Record<string, unknown> {
+	const iso = new Date(nowMs).toISOString();
+	return {
+		title,
+		body,
+		level,
+		iso,
+		timestamp: iso,
+		source: "waywiser",
+		human: fmtStamp(nowMs),
+		age: fmtAge(nowMs),
+	};
+}
+
+async function sendWebhook(url: string, headers: Record<string, string> | undefined, title: string, body: string, level: string = "normal"): Promise<{ ok: boolean; error?: string }> {
 	try {
 		const res = await fetch(url, {
 			method: "POST",
 			headers: { "Content-Type": "application/json", ...(headers ?? {}) },
-			body: JSON.stringify({ title, body, timestamp: new Date().toISOString(), source: "waywiser" }),
+			body: JSON.stringify(buildWebhookPayload(title, body, level)),
 		});
 		if (res.ok) return { ok: true };
 		return { ok: false, error: `HTTP ${res.status}` };
@@ -338,7 +352,7 @@ export async function sendNotification(
 		} else if (ch === "telegram" && config.channels.telegram?.enabled && config.channels.telegram.token && config.channels.telegram.chatId) {
 			result = await sendTelegram(config.channels.telegram.token, config.channels.telegram.chatId, title, body);
 		} else if (ch === "webhook" && config.channels.webhook?.enabled && config.channels.webhook.url) {
-			result = await sendWebhook(config.channels.webhook.url, config.channels.webhook.headers, title, body);
+			result = await sendWebhook(config.channels.webhook.url, config.channels.webhook.headers, title, body, String(opts?.urgency ?? "normal"));
 		} else if (ch === "termux" && config.channels.termux?.enabled) {
 			result = await sendTermux(
 				title,
