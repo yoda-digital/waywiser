@@ -20,6 +20,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { registry_, waywiserHome } from "../utils/state.js";
+import { fmtStamp, fmtAge } from "../utils/time.js";
 import { registerSignalProvider, registerPostFilter } from "../proactive.js";
 import { registerTermuxActionBuilder, sendNotification, type NotifyAction } from "../notify.js";
 import { getMobileConfig, setMobileConfig } from "./config.js";
@@ -33,6 +34,10 @@ import { withBurst, acquireWakeLock, releaseWakeLock } from "./wakelock.js";
 import { mobileSignals, mobileDiscretion } from "./signals.js";
 import { handleCapture } from "./capture.js";
 import type { InboxMessage } from "./types.js";
+
+export function _receivedPrefix(receivedAtMs: number): string {
+	return `[received ${fmtStamp(receivedAtMs)} · ${fmtAge(receivedAtMs)}] `;
+}
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..", "..");
@@ -96,14 +101,14 @@ export default function mobile(pi: ExtensionAPI): void {
 				case "reply": {
 					const text = msg.payload ?? "";
 					if (!text.trim()) break;
-					pi.sendUserMessage(`[reply] ${text}`, { deliverAs: "followUp" });
+					pi.sendUserMessage(`${_receivedPrefix(msg.receivedAtMs)}[reply] ${text}`, { deliverAs: "followUp" });
 					break;
 				}
 				case "do": {
 					// Payload carries the intent JSON serialized by waywiser-do.
 					const intent = msg.extra?.intent ? safeJsonParse(msg.extra.intent) : null;
 					if (intent && typeof intent === "object" && "kind" in intent) {
-						await dispatchIntent(pi, intent as { kind: string; [k: string]: unknown });
+						await dispatchIntent(pi, intent as { kind: string; [k: string]: unknown }, msg.receivedAtMs);
 					}
 					break;
 				}
@@ -131,10 +136,10 @@ export default function mobile(pi: ExtensionAPI): void {
 		void ctx; // reserved for future UI feedback
 	}
 
-	async function dispatchIntent(pi: ExtensionAPI, intent: { kind: string; [k: string]: unknown }): Promise<void> {
+	async function dispatchIntent(pi: ExtensionAPI, intent: { kind: string; [k: string]: unknown }, receivedAtMs: number): Promise<void> {
 		switch (intent.kind) {
 			case "prompt":
-				if (typeof intent.prompt === "string") pi.sendUserMessage(String(intent.prompt), { deliverAs: "followUp" });
+				if (typeof intent.prompt === "string") pi.sendUserMessage(`${_receivedPrefix(receivedAtMs)}${String(intent.prompt)}`, { deliverAs: "followUp" });
 				return;
 			case "snooze": {
 				const minutes = Number(intent.minutes ?? 60);
