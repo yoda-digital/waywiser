@@ -1,7 +1,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ExperienceTrace } from "../../extensions/brain/trace.ts";
+import { ExperienceTrace, observationForLlm } from "../../extensions/brain/trace.ts";
 import { DEFAULT_BRAIN_CONFIG } from "../../extensions/brain/config.ts";
+import type { Observation } from "../../extensions/brain/types.ts";
 
 describe("ExperienceTrace", () => {
   function makeTrace() {
@@ -122,5 +123,71 @@ describe("ExperienceTrace", () => {
     trace.beginRun(); // second run
     const exp = trace.finalize({ sessionManager: mockSessionManager(), cwd: "/" });
     assert.equal(exp.observations.length, 0);
+  });
+});
+
+describe("observationForLlm", () => {
+  function makeObs(overrides: Partial<Observation> = {}): Observation {
+    return {
+      id: "obs_test001",
+      toolCallId: "tc_test",
+      tool: "read",
+      targetKey: "/some/file.ts",
+      input: {},
+      result: "success",
+      provenance: "local_fs",
+      timestamp: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it("returns wallClock matching HH:MM or Mon DD, HH:MM", () => {
+    const obs = makeObs();
+    const row = observationForLlm(obs);
+    assert.match(row.wallClock, /^\d{2}:\d{2}$|^[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}$/);
+  });
+
+  it("preserves ISO timestamp verbatim", () => {
+    const ts = "2026-08-25T10:30:00.000Z";
+    const obs = makeObs({ timestamp: ts });
+    const row = observationForLlm(obs);
+    assert.equal(row.timestamp, ts);
+  });
+
+  it("maps id, tool, target, result correctly", () => {
+    const obs = makeObs({ id: "obs_abc123", tool: "bash", targetKey: "/proj/run.sh", result: "error" });
+    const row = observationForLlm(obs);
+    assert.equal(row.id, "obs_abc123");
+    assert.equal(row.tool, "bash");
+    assert.equal(row.target, "/proj/run.sh");
+    assert.equal(row.result, "error");
+  });
+
+  it("error and recoveredFrom are undefined when observation has no errorClass/recoveryOf", () => {
+    const obs = makeObs();
+    const row = observationForLlm(obs);
+    assert.equal(row.error, undefined);
+    assert.equal(row.recoveredFrom, undefined);
+  });
+
+  it("error is present when observation has errorClass", () => {
+    const obs = makeObs({ result: "error", errorClass: "not_found" });
+    const row = observationForLlm(obs);
+    assert.equal(row.error, "not_found");
+  });
+
+  it("recoveredFrom is present when observation has recoveryOf", () => {
+    const obs = makeObs({ recoveryOf: "obs_earlier001" });
+    const row = observationForLlm(obs);
+    assert.equal(row.recoveredFrom, "obs_earlier001");
+  });
+
+  it("wallClock for a past-day timestamp has date portion", () => {
+    // Force a cross-day timestamp: 2 days ago
+    const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString();
+    const obs = makeObs({ timestamp: twoDaysAgo });
+    const row = observationForLlm(obs);
+    // Cross-day format: "Mon DD, HH:MM"
+    assert.match(row.wallClock, /^[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}$/);
   });
 });

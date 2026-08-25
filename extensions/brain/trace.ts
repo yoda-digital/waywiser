@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { classifyToolProvenance } from "./provenance.ts";
 import { extractTargetKey, linkRecoveries } from "./recovery.ts";
 import type { BrainConfig, Experience, ExperienceOutcome, Observation, RecallResult } from "./types.js";
+import { fmtStamp } from "../utils/time.ts";
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -104,6 +105,34 @@ function newExperienceId(): string {
 
 function lastPathSegment(p: string): string {
   return p.split(/[\\/]/).filter(Boolean).pop() ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// LLM-facing projection
+// ---------------------------------------------------------------------------
+
+/** Project an Observation into the shape sent to LLMs, adding a
+ * human-readable wallClock sibling for the ISO timestamp. */
+export function observationForLlm(o: Observation): {
+  id: string;
+  tool: string;
+  target: string;
+  result: string;
+  error?: string;
+  recoveredFrom?: string;
+  timestamp: string;
+  wallClock: string;
+} {
+  return {
+    id: o.id,
+    tool: o.tool,
+    target: o.targetKey,
+    result: o.result,
+    error: o.errorClass || undefined,
+    recoveredFrom: o.recoveryOf || undefined,
+    timestamp: o.timestamp,
+    wallClock: fmtStamp(o.timestamp),
+  };
 }
 
 // ---------------------------------------------------------------------------

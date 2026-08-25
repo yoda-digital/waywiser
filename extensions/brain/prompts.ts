@@ -9,6 +9,7 @@
 
 import type { Experience, Observation, BrainMemory, Procedure, RecallResult } from "./types.ts";
 import { fmtSmart } from "../utils/time.ts";
+import { observationForLlm } from "./trace.ts";
 
 /**
  * Prompt for reflective extraction (learner pass 2).
@@ -40,13 +41,7 @@ Rules:
 Reply with ONLY one JSON object: {"candidates":[...], "procedures":[...], "usageFeedback":[...]}
 Empty arrays when nothing qualifies. No code fences, no commentary.`;
 
-  const observations = experience.observations.map(o => ({
-    tool: o.tool,
-    target: o.targetKey,
-    result: o.result,
-    error: o.errorClass || undefined,
-    recoveredFrom: o.recoveryOf || undefined,
-  }));
+  const observations = experience.observations.map(observationForLlm);
 
   const user = JSON.stringify({
     objective: experience.objective,
@@ -151,9 +146,10 @@ Given the observations below, identify which successes recovered from which fail
 
 Reply JSON only: {"recoveries": [{"successId": "...", "failureId": "...", "reason": "..."}]}. Empty array if none. No code fences.`;
 
-  const user = observations.map(o =>
-    `${o.id}: ${o.tool} → ${o.targetKey} [${o.result}${o.errorClass ? ` (${o.errorClass})` : ""}]`
-  ).join("\n");
+  const user = observations.map(o => {
+    const row = observationForLlm(o);
+    return `${row.id} [${row.wallClock}]: ${row.tool} → ${row.target} [${row.result}${row.error ? ` (${row.error})` : ""}]`;
+  }).join("\n");
 
   return { system, user };
 }

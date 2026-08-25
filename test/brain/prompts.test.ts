@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { renderBrainContext } from "../../extensions/brain/prompts.ts";
-import type { RecallResult } from "../../extensions/brain/types.ts";
+import { gatePrompt, renderBrainContext } from "../../extensions/brain/prompts.ts";
+import type { Experience, RecallResult } from "../../extensions/brain/types.ts";
 
 describe("prompts", () => {
   describe("renderBrainContext", () => {
@@ -94,5 +94,46 @@ describe("renderBrainContext age suffix", () => {
       memoryIds: [3], procedureIds: [], revision: 1,
     });
     assert.ok(!out.includes("(last used"), "should not have age suffix when no timestamp");
+  });
+});
+
+describe("gatePrompt", () => {
+  it("observations in user body include wallClock field", () => {
+    const ts = new Date().toISOString();
+    const exp: Experience = {
+      id: "exp_test001",
+      sessionId: "s1",
+      sessionFile: "",
+      branchLeaf: "leaf_1",
+      cwd: "/project",
+      projectKey: "project",
+      objective: "do something",
+      outcome: { status: "success", confidence: "inferred", summary: "1 call succeeded." },
+      observations: [
+        {
+          id: "obs_001",
+          toolCallId: "tc_1",
+          tool: "read",
+          targetKey: "/file.ts",
+          input: {},
+          result: "success",
+          provenance: "local_fs",
+          timestamp: ts,
+        },
+      ],
+      recalledMemoryIds: [],
+      recalledProcedureIds: [],
+      skillsUsed: [],
+      externalSources: [],
+      startedAt: ts,
+      settledAt: ts,
+    };
+    const { user } = gatePrompt(exp);
+    const parsed = JSON.parse(user);
+    assert.ok(Array.isArray(parsed.observations));
+    assert.equal(parsed.observations.length, 1);
+    assert.ok("wallClock" in parsed.observations[0], "observations[0] should have wallClock");
+    assert.match(parsed.observations[0].wallClock, /^\d{2}:\d{2}$|^[A-Z][a-z]{2} \d{1,2}, \d{2}:\d{2}$/);
+    assert.equal(parsed.observations[0].timestamp, ts);
   });
 });
