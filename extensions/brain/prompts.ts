@@ -8,36 +8,7 @@
  */
 
 import type { Experience, Observation, BrainMemory, Procedure, RecallResult } from "./types.ts";
-
-/**
- * Format a timestamp as a relative age ("3h ago") or absolute stamp
- * ("Aug 20, 09:15"), using a fixed 24h threshold.
- *
- * Intentionally inlined (not imported from utils/time.ts) because
- * utils/time.ts imports "./state.js" which Node's native
- * --experimental-strip-types loader cannot resolve (no compiled .js files
- * exist; only .ts sources). All brain tests run under native strip-types
- * (not jiti), so importing time.ts transitively breaks the whole test suite.
- * The circular utils/state.ts ↔ utils/time.ts pre-exists and is tolerated
- * under jiti in production, but fails under strip-types in tests.
- *
- * This implementation is semantically equivalent to fmtSmart(v, 24) from
- * extensions/utils/time.ts (hardcoded 24h threshold matches the default
- * returned by relativeThresholdHours() when config is absent).
- */
-function fmtSmart(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const h = ms / 3_600_000;
-  if (h < 24) {
-    const m = Math.round(ms / 60_000);
-    if (m < 60) return `${m}m ago`;
-    return `${Math.floor(h)}h ago`;
-  }
-  // Absolute: "Aug 20, 09:15"
-  return new Date(iso).toLocaleString("en", {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
-  });
-}
+import { fmtSmart } from "../utils/time.ts";
 
 /**
  * Prompt for reflective extraction (learner pass 2).

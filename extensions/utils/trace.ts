@@ -9,7 +9,7 @@
  * read `text` as plain prose (the /journey command, `/trace export`) parse
  * it as JSON and fall back to raw text for legacy rows.
  */
-import { db_ } from "./state.js";
+import { db_ } from "./state.ts";
 
 /** A structured journey entry. */
 export interface TraceEvent {

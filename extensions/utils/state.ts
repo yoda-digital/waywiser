@@ -7,8 +7,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomBytes } from "node:crypto";
-import { logLegacy } from "./trace.js";
-import { nowIso } from "./time.js";
+import { logLegacy } from "./trace.ts";
+import { nowIso } from "./time.ts";
 
 // Kept in sync with package.json "version" by hand (bug fix: was stuck at "0.1.0").
 export const WAYWISER_VERSION = "1.0.0";

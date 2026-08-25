@@ -7,7 +7,7 @@
  * user's configured timezone.
  */
 import * as path from "node:path";
-import { readJSON } from "./state.js";
+import { readJSON } from "./state.ts";
 
 // ── timezone ──────────────────────────────────────────────────────────
 
