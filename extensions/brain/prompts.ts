@@ -10,6 +10,27 @@
 import type { Experience, Observation, BrainMemory, Procedure, RecallResult } from "./types.ts";
 
 /**
+ * Format a timestamp as a relative age ("3h ago") or absolute stamp
+ * ("Aug 20, 09:15"), using a configurable threshold.
+ * Inline here to avoid the time.ts → state.js circular import chain
+ * that breaks Node's strip-types loader used in brain unit tests.
+ * Mirrors fmtSmart from extensions/utils/time.ts.
+ */
+function fmtSmart(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const h = ms / 3_600_000;
+  if (h < 24) {
+    const m = Math.round(ms / 60_000);
+    if (m < 60) return `${m}m ago`;
+    return `${Math.floor(h)}h ago`;
+  }
+  // Absolute: "Aug 20, 09:15"
+  return new Date(iso).toLocaleString("en", {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+}
+
+/**
  * Prompt for reflective extraction (learner pass 2).
  * Extracts durable knowledge from an experience record.
  */
@@ -176,14 +197,19 @@ export function renderBrainContext(recalled: RecallResult): string {
   if (memories.length) {
     lines.push("## Your Memories (use these first)");
     for (const m of memories) {
-      lines.push(`- [${m.scope}] ${m.content}`);
+      const ref = m.last_accessed ?? m.created_at;
+      const age = ref ? ` (last used ${fmtSmart(ref)})` : "";
+      lines.push(`- [${m.scope}] ${m.content}${age}`);
     }
   }
 
   if (procedures.length) {
     lines.push("## Your Learned Procedures (apply these when relevant)");
     for (const p of procedures) {
-      lines.push(`- ${p.content}`);
+      const ref = p.last_used ?? p.created_at;
+      const uses = typeof p.uses === "number" ? p.uses : 0;
+      const age = ref ? ` (${uses} uses, last ${fmtSmart(ref)})` : "";
+      lines.push(`- ${p.content}${age}`);
     }
   }
 
