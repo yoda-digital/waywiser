@@ -42,6 +42,7 @@ import * as fs from "node:fs";
 import { db_, registry_, rememberRow, recentMemories, logMem, homeFile } from "./utils/state.js";
 import { extractText, lastUserEntry, jaccard, DUPLICATE_JACCARD } from "./memrules.js";
 import { registerInjection, removeInjection, PRIORITIES } from "./utils/prompt-budget.js";
+import { fmtSmart } from "./utils/time.js";
 import { sendNotification } from "./notify.js";
 import { spawnCard } from "./kanban/worker.js";
 import { getCard } from "./kanban/shared.js";
@@ -457,7 +458,7 @@ export default function metaSkills(pi: ExtensionAPI): void {
 			if (sub === "corrections") {
 				ctx.ui.notify(
 					correctionsThisSession.length
-						? correctionsThisSession.map((c) => `[${new Date(c.at).toISOString()}] ${c.content}`).join("\n")
+						? correctionsThisSession.map((c) => `[${fmtSmart(c.at)}] ${c.content}`).join("\n")
 						: "No corrections detected this session.",
 					"info",
 				);
