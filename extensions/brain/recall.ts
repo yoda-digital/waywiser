@@ -143,6 +143,8 @@ function fuzzyFallback(
       score: 0.01 / (1 + i), // low score — fuzzy match, below FTS results
       scope: (String(row.scope) || "global") as MemoryScope,
       fusionBreakdown: { lexical: 0, scope: 0, usage: 0, confidence: 0, recency: 0 },
+      last_accessed: row.last_accessed as string | undefined,
+      created_at: row.created_at as string | undefined,
     }));
 
     const memoryIds = items.map(i => i.id as number);
@@ -362,15 +364,27 @@ export async function recall(opts: RecallOpts): Promise<RecallResult> {
 
     let content: string;
     let scope: MemoryScope;
+    let last_accessed: string | undefined;
+    let last_used: string | undefined;
+    let created_at: string | undefined;
+    let uses: number | undefined;
 
     if (isMemory) {
       const m = memories.find((mem) => mem.id === Number(numId))!;
       content = m.content;
       scope = m.scope;
+      last_accessed = m.lastAccessed;
+      created_at = m.createdAt;
     } else {
       const p = procedures.find((proc) => proc.id === numId)!;
       content = `When ${p.triggerText}${p.avoidText ? `, avoid: ${p.avoidText}` : ""}${p.preferText ? `, prefer: ${p.preferText}` : ""}`;
       scope = p.scope;
+      // procedures table has no last_used column; updatedAt is bumped on every
+      // success/failure application — semantically equivalent to "last applied".
+      last_used = p.updatedAt;
+      created_at = p.createdAt;
+      // uses = total times applied (success + failure)
+      uses = p.successCount + p.failureCount;
     }
 
     if (totalChars + content.length > config.maxChars) break;
@@ -392,6 +406,10 @@ export async function recall(opts: RecallOpts): Promise<RecallResult> {
       score,
       scope,
       fusionBreakdown,
+      last_accessed,
+      last_used,
+      created_at,
+      uses,
     });
   }
 
