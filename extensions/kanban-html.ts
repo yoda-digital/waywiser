@@ -6,7 +6,7 @@
  *  generateStaticSnapshot() → offline read-only fallback (all data baked in)
  */
 import { getBoardToken } from "./kanban-server.js";
-import { fmtDateOnly, fmtDateTime } from "./utils/time.js";
+import { fmtDateOnly, fmtDateTime, fmtStamp, fmtAge } from "./utils/time.js";
 
 export interface BoardRow {
 	id: string;
@@ -170,7 +170,7 @@ function renderCardHtml(c: CardRow, interactive: boolean): string {
 		</div>
 		<div class="card-meta">
 			<span class="badge badge-pri ${escHtml(c.priority)}">${escHtml(c.priority)}</span>
-			${od ? `<span class="badge badge-overdue">⚠️ OVERDUE</span>` : ""}
+			${od ? `<span class="badge badge-overdue">⚠️ OVERDUE${c.due ? ` (${escHtml(fmtAge(c.due))})` : ""}</span>` : ""}
 			${dueFmt ? `<span>📅 ${escHtml(dueFmt)}</span>` : ""}
 			${c.assignee ? `<span>→ ${escHtml(c.assignee)}</span>` : ""}
 		</div>
@@ -194,7 +194,7 @@ function renderCardHtml(c: CardRow, interactive: boolean): string {
 			</div>` : `
 			${c.notes ? `<div><strong>Notes:</strong> ${escHtml(c.notes)}</div>` : ""}
 			${c.report ? `<div><strong>Report:</strong> ${escHtml(c.report)}</div>` : ""}
-			<div style="margin-top:.2rem">Created: ${escHtml(c.created_at)} · Updated: ${escHtml(c.updated_at)}</div>
+			<div style="margin-top:.2rem;opacity:.7">Created: ${escHtml(fmtStamp(c.created_at))} · Updated: ${escHtml(fmtStamp(c.updated_at))} (${escHtml(fmtAge(c.updated_at))})</div>
 			`}
 		</div>
 	</div>`;
