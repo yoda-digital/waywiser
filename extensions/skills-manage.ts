@@ -68,6 +68,22 @@ function discoverSkills(cwd: string): SkillInfo[] {
 const sanitize = (name: string): string => name.replace(/[^a-zA-Z0-9-_]/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "skill";
 
 export default function skillsManage(pi: ExtensionAPI): void {
+	// One-shot flag: defers auto-onboarding sendUserMessage to agent_settled
+	// (sending from before_agent_start races with the prompt already being
+	// processed, causing "Agent is already processing a prompt" errors).
+	let pendingOnboard = false;
+
+	pi.on("agent_settled", () => {
+		if (!pendingOnboard) return;
+		pendingOnboard = false;
+		try {
+			pi.sendUserMessage(
+				"[system] This is your first session. Load skill_view name=\"pa-onboard\" and run the complete setup wizard to configure Waywiser as your personal assistant. Greet the user warmly and walk them through each step.",
+				{ deliverAs: "followUp" },
+			);
+		} catch { /* agent not idle yet — the system-prompt note covers it */ }
+	});
+
 	// ── Inject lightweight PA skill catalog into system prompt ──────────
 	// Progressive disclosure: only names + descriptions here (cache-stable).
 	// Full skill content loads on-demand via skill_view.
@@ -102,19 +118,13 @@ export default function skillsManage(pi: ExtensionAPI): void {
 			.map((s) => `  ${tierBadge(s)} ${s.name}: ${s.description}`)
 			.join("\n");
 
-		// Auto-trigger onboarding on first-ever session
+		// Auto-trigger onboarding on first-ever session — deferred to
+		// agent_settled via the pendingOnboard flag (see above).
 		if (!onboarded) {
 			try {
 				const memCount = (db_().prepare("SELECT COUNT(*) AS c FROM memories").get() as { c: number }).c;
 				if (memCount === 0) {
-					// First-ever session: no memories at all → auto-trigger onboarding
-					// The agent will greet the user and walk through setup
-					try {
-						pi.sendUserMessage(
-							"[system] This is your first session. Load skill_view name=\"pa-onboard\" and run the complete setup wizard to configure Waywiser as your personal assistant. Greet the user warmly and walk them through each step.",
-							{ deliverAs: "followUp" },
-						);
-					} catch { /* agent not ready yet — the note below will cover it */ }
+					pendingOnboard = true;
 				}
 			} catch { /* db not ready */ }
 		}
