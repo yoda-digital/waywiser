@@ -40,6 +40,7 @@ const modules = [
 	"./proactive.js",
 	"./meta-skills.js",
 	"./clock.js",
+	"./tui-stamps.js",
 ];
 
 export default async function (pi: ExtensionAPI) {

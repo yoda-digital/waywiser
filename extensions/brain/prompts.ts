@@ -8,6 +8,8 @@
  */
 
 import type { Experience, Observation, BrainMemory, Procedure, RecallResult } from "./types.ts";
+import { fmtSmart } from "../utils/time.ts";
+import { observationForLlm } from "./trace.ts";
 
 /**
  * Prompt for reflective extraction (learner pass 2).
@@ -39,13 +41,7 @@ Rules:
 Reply with ONLY one JSON object: {"candidates":[...], "procedures":[...], "usageFeedback":[...]}
 Empty arrays when nothing qualifies. No code fences, no commentary.`;
 
-  const observations = experience.observations.map(o => ({
-    tool: o.tool,
-    target: o.targetKey,
-    result: o.result,
-    error: o.errorClass || undefined,
-    recoveredFrom: o.recoveryOf || undefined,
-  }));
+  const observations = experience.observations.map(observationForLlm);
 
   const user = JSON.stringify({
     objective: experience.objective,
@@ -150,9 +146,10 @@ Given the observations below, identify which successes recovered from which fail
 
 Reply JSON only: {"recoveries": [{"successId": "...", "failureId": "...", "reason": "..."}]}. Empty array if none. No code fences.`;
 
-  const user = observations.map(o =>
-    `${o.id}: ${o.tool} → ${o.targetKey} [${o.result}${o.errorClass ? ` (${o.errorClass})` : ""}]`
-  ).join("\n");
+  const user = observations.map(o => {
+    const row = observationForLlm(o);
+    return `${row.id} [${row.wallClock}]: ${row.tool} → ${row.target} [${row.result}${row.error ? ` (${row.error})` : ""}]`;
+  }).join("\n");
 
   return { system, user };
 }
@@ -176,14 +173,19 @@ export function renderBrainContext(recalled: RecallResult): string {
   if (memories.length) {
     lines.push("## Your Memories (use these first)");
     for (const m of memories) {
-      lines.push(`- [${m.scope}] ${m.content}`);
+      const ref = m.last_accessed ?? m.created_at;
+      const age = ref ? ` (last used ${fmtSmart(ref)})` : "";
+      lines.push(`- [${m.scope}] ${m.content}${age}`);
     }
   }
 
   if (procedures.length) {
     lines.push("## Your Learned Procedures (apply these when relevant)");
     for (const p of procedures) {
-      lines.push(`- ${p.content}`);
+      const ref = p.last_used ?? p.created_at;
+      const uses = typeof p.uses === "number" ? p.uses : 0;
+      const age = ref ? ` (${uses} uses, last ${fmtSmart(ref)})` : "";
+      lines.push(`- ${p.content}${age}`);
     }
   }
 

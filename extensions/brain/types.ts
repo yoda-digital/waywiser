@@ -185,6 +185,14 @@ export interface RecallItem {
     recency: number;
     semantic?: number;
   };
+  /** ISO timestamp of last access (memories) */
+  last_accessed?: string;
+  /** ISO timestamp of last use (procedures) */
+  last_used?: string;
+  /** ISO timestamp of creation (fallback for either type) */
+  created_at?: string;
+  /** Number of times procedure has been applied */
+  uses?: number;
 }
 
 // ---------------------------------------------------------------------------

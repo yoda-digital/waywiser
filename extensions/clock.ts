@@ -38,8 +38,13 @@ export default function clock(pi: ExtensionAPI): void {
 		return `\n[Time context]\nCurrent: ${dayName}, ${datePart} ${timePart} (${tz})\nSession active: ${elapsed}\n`;
 	}
 
-	pi.on("session_start", () => {
+	pi.on("session_start", (_event, ctx) => {
 		sessionStartAt = Date.now();
+		// Grab ctx here too — otherwise the status bar is blank until the
+		// user's first turn (before_agent_start), and the 1-min interval
+		// no-ops the whole time because latestCtx is still undefined.
+		latestCtx = ctx;
+		updateClock();
 	});
 
 	pi.on("before_agent_start", (_event, ctx) => {

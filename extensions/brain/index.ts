@@ -43,6 +43,7 @@ import { checkEvolutionTriggers, promotePending } from "./evolve.ts";
 import { vaultSyncInbound, vaultSyncOutbound } from "./vault.ts";
 import { detectProjectKey } from "./policy.ts";
 import type { BrainConfig, RecallResult } from "./types.ts";
+import { fmtDateTime, fmtAge } from "../utils/time.ts";
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
@@ -638,11 +639,17 @@ function handleEvolveCommand(action: string, target: string, store: BrainStore, 
   }
 }
 
-function handleExperienceInspect(id: string | undefined, store: BrainStore): string {
+export function handleExperienceInspect(id: string | undefined, store: BrainStore): string {
   if (!id) return "Usage: /brain experience <id>";
   const exp = store.getExperience(id);
   if (!exp) return `Experience "${id}" not found`;
-  return JSON.stringify(exp, null, 2);
+  const enriched = {
+    ...exp,
+    startedAtHuman: exp.startedAt ? fmtDateTime(exp.startedAt) : undefined,
+    settledAtHuman: exp.settledAt ? fmtDateTime(exp.settledAt) : undefined,
+    age: fmtAge(exp.startedAt),
+  };
+  return JSON.stringify(enriched, null, 2);
 }
 
 function handleProcedureInspect(key: string | undefined, store: BrainStore): string {
@@ -652,12 +659,19 @@ function handleProcedureInspect(key: string | undefined, store: BrainStore): str
   return JSON.stringify(proc, null, 2);
 }
 
-function handleMemoryInspect(idStr: string | undefined, store: BrainStore): string {
+export function handleMemoryInspect(idStr: string | undefined, store: BrainStore): string {
   if (!idStr) return "Usage: /brain memory <id>";
   const id = Number(idStr);
   if (isNaN(id)) return `Invalid memory ID: ${idStr}`;
   const mem = store.getMemory(id);
   if (!mem) return `Memory #${id} not found`;
   const evidence = store.getMemoryEvidence(id);
-  return JSON.stringify({ ...mem, evidence }, null, 2);
+  const enriched = {
+    ...mem,
+    evidence,
+    createdAtHuman: mem.createdAt ? fmtDateTime(mem.createdAt) : undefined,
+    lastAccessedHuman: mem.lastAccessed ? fmtDateTime(mem.lastAccessed) : undefined,
+    age: fmtAge(mem.lastAccessed ?? mem.createdAt),
+  };
+  return JSON.stringify(enriched, null, 2);
 }

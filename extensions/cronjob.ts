@@ -21,6 +21,7 @@ import { Type } from "typebox";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { db_, waywiserHome, shortId, registry_, readJSON, writeJSON } from "./utils/state.js";
+import { fmtSmart, fmtDateTime } from "./utils/time.js";
 
 const MIN_MS = 60_000; // 1 minute floor — matches waywiser-* (no sub-minute jobs)
 
@@ -161,6 +162,26 @@ export function parseCron(expr: string): ((d: Date) => number) {
 		}
 		throw new Error(`cron expression "${expr}" matches no time in 400 days (check dom/dow interaction)`);
 	};
+}
+
+export interface JobRowForDisplay {
+	id: string;
+	name?: string | null;
+	mode: string;
+	enabled: number | boolean;
+	schedule: string;
+	prompt: string;
+	lastRun?: string | number | null;
+	nextRun?: string | number | null;
+}
+
+export function formatJobRow(job: JobRowForDisplay): string {
+	const enabled = job.enabled ? "on " : "off ";
+	const name = job.name ?? "";
+	const promptShort = String(job.prompt).slice(0, 60);
+	const last = job.lastRun ? ` (last: ${fmtSmart(job.lastRun)})` : "";
+	const next = job.nextRun ? ` (next: ${fmtDateTime(job.nextRun)})` : "";
+	return `[${job.id}] ${enabled}(${job.mode}) "${name}": ${job.schedule} — ${promptShort}${last}${next}`;
 }
 
 export default function cronjob(pi: ExtensionAPI): void {
@@ -363,7 +384,25 @@ export default function cronjob(pi: ExtensionAPI): void {
 					if (!rows.length) return mk("No cron jobs.");
 					return mk(
 						rows
-							.map((r) => `[${r.id}] ${r.enabled ? "on " : "off "} (${r.mode}) "${r.name ?? ""}": ${r.schedule} — ${String(r.prompt).slice(0, 60)}${r.last_run ? ` (last: ${r.last_run})` : ""}`)
+							.map((r) => {
+								let nextRun: number | undefined;
+								try {
+									const nf = nextFire(String(r.schedule));
+									nextRun = nf.d?.getTime() ?? nf.at;
+								} catch {
+									nextRun = undefined;
+								}
+								return formatJobRow({
+									id: String(r.id),
+									name: r.name as string | null | undefined,
+									mode: String(r.mode),
+									enabled: r.enabled as number | boolean,
+									schedule: String(r.schedule),
+									prompt: String(r.prompt),
+									lastRun: r.last_run as string | null | undefined,
+									nextRun,
+								});
+							})
 							.join("\n"),
 					);
 				}
