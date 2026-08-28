@@ -1,0 +1,4705 @@
+<title>Waywiser v2 Engineering Specs</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --ground: #F5F6FA;
+  --surface: #FFFFFF;
+  --surface-alt: #EEF0F6;
+  --text: #1A2332;
+  --text-secondary: #4A5568;
+  --text-muted: #718096;
+  --accent: #2563EB;
+  --accent-soft: #DBEAFE;
+  --border: #D8DCE6;
+  --border-light: #E8ECF2;
+  --code-bg: #F0F2F8;
+  --code-text: #1A2332;
+  --table-head: #F0F2F8;
+  --table-row-alt: #FAFBFD;
+  --shadow: rgba(15, 23, 42, 0.06);
+  --nav-bg: #FFFFFF;
+  --nav-active: #2563EB;
+  --phase-p0: #6366F1;
+  --phase-p1: #2563EB;
+  --phase-p2: #0891B2;
+  --phase-p3: #7C3AED;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0B1120;
+    --surface: #131D30;
+    --surface-alt: #1A2740;
+    --text: #E2E8F0;
+    --text-secondary: #A0AEC0;
+    --text-muted: #718096;
+    --accent: #60A5FA;
+    --accent-soft: #1E3A5F;
+    --border: #2A3650;
+    --border-light: #1E2D44;
+    --code-bg: #1A2740;
+    --code-text: #E2E8F0;
+    --table-head: #1A2740;
+    --table-row-alt: #111B2E;
+    --shadow: rgba(0, 0, 0, 0.3);
+    --nav-bg: #131D30;
+    --nav-active: #60A5FA;
+    --phase-p0: #818CF8;
+    --phase-p1: #60A5FA;
+    --phase-p2: #22D3EE;
+    --phase-p3: #A78BFA;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0B1120;
+  --surface: #131D30;
+  --surface-alt: #1A2740;
+  --text: #E2E8F0;
+  --text-secondary: #A0AEC0;
+  --text-muted: #718096;
+  --accent: #60A5FA;
+  --accent-soft: #1E3A5F;
+  --border: #2A3650;
+  --border-light: #1E2D44;
+  --code-bg: #1A2740;
+  --code-text: #E2E8F0;
+  --table-head: #1A2740;
+  --table-row-alt: #111B2E;
+  --shadow: rgba(0, 0, 0, 0.3);
+  --nav-bg: #131D30;
+  --nav-active: #60A5FA;
+  --phase-p0: #818CF8;
+  --phase-p1: #60A5FA;
+  --phase-p2: #22D3EE;
+  --phase-p3: #A78BFA;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', -apple-system, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.spec-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 0.6rem 1rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  box-shadow: 0 1px 3px var(--shadow);
+}
+
+.spec-nav .nav-title {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text);
+  margin-right: 1rem;
+  white-space: nowrap;
+}
+
+.spec-nav a {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.spec-nav a:hover { color: var(--text); background: var(--surface-alt); }
+.spec-nav a.p0 { border-left: 3px solid var(--phase-p0); }
+.spec-nav a.p1 { border-left: 3px solid var(--phase-p1); }
+.spec-nav a.p2 { border-left: 3px solid var(--phase-p2); }
+.spec-nav a.p3 { border-left: 3px solid var(--phase-p3); }
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 4rem;
+}
+
+.doc-header {
+  text-align: center;
+  padding: 2rem 0 1.5rem;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 2.5rem;
+}
+
+.doc-header h1 {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 2rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.doc-header .subtitle {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.phase-section { margin-bottom: 3rem; padding-top: 1rem; }
+
+h2 {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: var(--text);
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+  text-wrap: balance;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 2rem 0 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+h3 small, h3 .crate-tag, h3 .lang-tag {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-style: normal;
+}
+
+h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 1.5rem 0 0.5rem;
+}
+
+p { margin-bottom: 0.85rem; max-width: 70ch; color: var(--text-secondary); }
+
+strong { font-weight: 600; color: var(--text); }
+
+.phase-meta {
+  background: var(--surface-alt);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+}
+
+.phase-meta p { margin-bottom: 0.3rem; color: var(--text-secondary); }
+
+.phase-tag, .phase-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.phase-scope { font-size: 0.92rem; color: var(--text-secondary); }
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 0.75rem 0 1.25rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--code-text);
+}
+
+pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+
+code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.84em;
+  background: var(--code-bg);
+  padding: 0.12em 0.35em;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.spec-table { overflow-x: auto; margin: 0.75rem 0 1.25rem; border-radius: 5px; border: 1px solid var(--border); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+thead { background: var(--table-head); }
+
+th {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+
+tr:nth-child(even) td { background: var(--table-row-alt); }
+td:first-child { font-weight: 500; color: var(--text); }
+
+td.yes { color: #059669; font-weight: 600; }
+td.no { color: #DC2626; font-weight: 600; }
+td.maybe { color: #D97706; font-weight: 600; }
+
+ul, ol { margin: 0.5rem 0 1.25rem 1.5rem; color: var(--text-secondary); }
+li { margin-bottom: 0.3rem; font-size: 0.9rem; }
+li strong { color: var(--text); }
+
+ol.acceptance-criteria li { margin-bottom: 0.6rem; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .container { padding: 1rem 0.75rem 3rem; }
+  .doc-header h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.25rem; }
+  pre { font-size: 0.72rem; padding: 0.75rem; }
+  .spec-nav { gap: 0.25rem; }
+  .spec-nav .nav-title { display: none; }
+}
+</style>
+
+<nav class="spec-nav">
+  <span class="nav-title">Waywiser v2</span>
+  <a href="#shared-foundations">Shared Types</a>
+  <a href="#p0-foundation" class="p0">P0 Foundation</a>
+  <a href="#p1-product" class="p1">P1 Product</a>
+  <a href="#phase-p2" class="p2">P2 Intelligence</a>
+  <a href="#p3-agency" class="p3">P3 Agency</a>
+</nav>
+
+<div class="container">
+
+<header class="doc-header">
+  <h1>Waywiser v2 — Engineering Specifications</h1>
+  <div class="subtitle">4 phases &middot; 39 components &middot; 59 acceptance criteria &middot; 28 August 2026</div>
+</header>
+<!-- ============================================================
+     SHARED FOUNDATIONS — types used across all four phases
+     ============================================================ -->
+<div class="phase-section" id="shared-foundations">
+
+<h2>Shared Foundations</h2>
+<p>Types defined here are the canonical contracts. Later phases extend them; no phase redefines them.</p>
+
+<!-- ── Identity types ── -->
+<h3>Core Identity Types</h3>
+
+<pre><code class="language-rust">use uuid::Uuid;
+use chrono::{DateTime, Utc};
+use serde::{Serialize, Deserialize};
+
+/// All durable entity IDs are UUIDv7 (§69) — globally unique, sortable by creation time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SessionId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LaneId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EntryId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct GoalId(pub Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct WorkItemId(pub Uuid);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CapabilityName(pub String);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeviceId(pub Uuid);
+</code></pre>
+
+<!-- ── Enumerations ── -->
+<h3>Observation &amp; Retention (§11)</h3>
+
+<pre><code class="language-rust">/// Retention classes for observations (§11).
+/// Raw environmental observations default to Ephemeral.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RetentionClass {
+    /// Discarded at end of processing cycle.
+    Ephemeral,
+    /// Lives until the session ends.
+    Session,
+    /// Persisted as durable experience; candidate for learning.
+    Experience,
+    /// Proposed for promotion to durable memory/procedure after validation.
+    DurableCandidate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Sensitivity {
+    Public,
+    Internal,
+    Personal,
+    Sensitive,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConsentScope {
+    /// User explicitly granted access.
+    Explicit,
+    /// Derived from a broader grant.
+    Implicit,
+    /// System-level observation (battery, network).
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ObservationKind {
+    UserActivity,
+    DeviceState,
+    Notification,
+    CalendarEvent,
+    LocationContext,
+    ScreenContent,
+    CameraFrame,
+    VoiceTranscript,
+    AppState,
+    SensorReading,
+    Custom(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ObservationSource {
+    Android,
+    User,
+    Agent,
+    Capability,
+    EdgeModel,
+    Integration(String),
+}
+
+/// Core observation type (§11).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Observation {
+    pub id: Uuid,
+    pub kind: ObservationKind,
+    pub subject: String,
+    pub value: serde_json::Value,
+
+    pub source: ObservationSource,
+    pub source_id: Option&lt;String&gt;,
+
+    /// 0.0–1.0 deterministic ceiling.
+    pub confidence: f32,
+
+    pub observed_at: DateTime&lt;Utc&gt;,
+    pub expires_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+
+    pub sensitivity: Sensitivity,
+    pub retention: RetentionClass,
+    pub consent_scope: Option&lt;ConsentScope&gt;,
+}
+</code></pre>
+
+<!-- ── Risk &amp; Attention ── -->
+<h3>Risk Classification (§23) &amp; Attention Decisions (§14)</h3>
+
+<pre><code class="language-rust">/// Deterministic risk levels (§23).
+/// Risk may only stay the same or increase as uncertainty grows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum RiskLevel {
+    ReadPersonal,
+    DeviceControl,
+    CrossAppWrite,
+    Communication,
+    Financial,
+    Destructive,
+    /// Unknown UI write — default: ASK_USER or block.
+    UiUnclassifiedWrite,
+}
+
+/// Attention governor decisions (§14).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum AttentionDecision {
+    Drop,
+    Batch,
+    Silent,
+    Notify,
+    HeadsUp,
+    Voice,
+    Urgent,
+}
+</code></pre>
+
+<!-- ── ActionIntent / ActionReceipt ── -->
+<h3>ActionIntent (§17), ActionReceipt (§19), Replay (§20)</h3>
+
+<pre><code class="language-rust">/// Where the action originated.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ActionOrigin {
+    PrimaryAgent { session_id: SessionId },
+    DelegatedAgent { session_id: SessionId, parent_session_id: SessionId },
+    DeterministicAutomation { rule_id: String },
+    UserDirect,
+    ProactiveEngine,
+}
+
+/// A durable typed proposal for a protected side effect (§17).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionIntent {
+    pub id: Uuid,
+    pub origin: ActionOrigin,
+    pub capability: CapabilityName,
+    pub arguments: serde_json::Value,
+    pub reason: String,
+
+    pub session_id: SessionId,
+    pub goal_id: Option&lt;GoalId&gt;,
+    pub work_item_id: Option&lt;WorkItemId&gt;,
+
+    pub evidence: Vec&lt;EvidenceRef&gt;,
+    pub idempotency_key: String,
+    pub requested_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvidenceRef {
+    pub kind: String,
+    pub reference: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ActionStatus {
+    Pending,
+    Executing,
+    Completed,
+    Failed { reason: String },
+    /// Process died between dispatch and confirmation (§20).
+    UnknownSideEffect,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VerificationStatus {
+    Verified,
+    Likely,
+    Unexpected,
+    Unknown,
+    NotChecked,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReplayPolicy {
+    SafeReplay,
+    NeverReplay,
+    VerifyBeforeRetry,
+}
+
+/// Durable receipt for every meaningful side effect (§19).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionReceipt {
+    pub intent_id: Uuid,
+    pub capability: CapabilityName,
+
+    pub started_at: DateTime&lt;Utc&gt;,
+    pub completed_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+
+    pub status: ActionStatus,
+    pub external_reference: Option&lt;String&gt;,
+
+    pub reversible: bool,
+    pub undo_token: Option&lt;String&gt;,
+
+    pub verification: VerificationStatus,
+    pub result_summary: Option&lt;String&gt;,
+}
+</code></pre>
+
+<!-- ── CapabilitySpec ── -->
+<h3>CapabilitySpec (§16)</h3>
+
+<pre><code class="language-rust">#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExecutionMode {
+    /// Runs in the agent's own context.
+    InProcess,
+    /// Delegates to Android platform.
+    AndroidPlatform,
+    /// Calls a remote service.
+    Remote,
+}
+
+/// Every protected capability declares this spec (§16).
+/// Unknown capabilities do not execute.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilitySpec {
+    pub name: CapabilityName,
+    pub description: String,
+
+    pub input_schema: serde_json::Value,
+    pub output_schema: serde_json::Value,
+
+    pub risk: RiskLevel,
+    pub permissions: Vec&lt;String&gt;,
+
+    pub side_effect: bool,
+    pub replay_policy: ReplayPolicy,
+    pub execution_mode: ExecutionMode,
+
+    pub reversible: bool,
+    pub dry_run_support: bool,
+    pub sensitivity: Sensitivity,
+}
+</code></pre>
+
+<!-- ── Memory types ── -->
+<h3>Memory, Experience, Procedure, Skill (§§28–33)</h3>
+
+<pre><code class="language-rust">#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProvenanceSource {
+    UserExplicit,
+    UserCorrection,
+    AgentObservation,
+    BrainReflection,
+    BrainConsolidation,
+    SystemDefault,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Provenance {
+    pub source: ProvenanceSource,
+    pub session_id: Option&lt;SessionId&gt;,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub confidence_ceiling: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryRecord {
+    pub id: Uuid,
+    pub content: String,
+    pub scope: String,
+    pub provenance: Provenance,
+    pub confidence: f32,
+    pub usage_count: u32,
+    pub last_recalled: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub updated_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExperienceRecord {
+    pub id: Uuid,
+    pub session_id: SessionId,
+    pub summary: String,
+    pub raw_context: serde_json::Value,
+    pub pass1_signals: Vec&lt;String&gt;,
+    pub pass2_complete: bool,
+    pub created_at: DateTime&lt;Utc&gt;,
+}
+
+/// A repeated operational pattern: WHEN X / AVOID Y / PREFER Z (§31).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Procedure {
+    pub id: Uuid,
+    pub pattern: String,
+    pub evidence: Vec&lt;Uuid&gt;,
+    pub confidence: f32,
+    pub provenance: Provenance,
+    pub maturity: ProcedureMaturity,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub updated_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProcedureMaturity {
+    Emerging,
+    Established,
+    Mature,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillVersion {
+    pub id: Uuid,
+    pub skill_id: Uuid,
+    pub version: u32,
+    pub manifest: serde_json::Value,
+    pub guidance: String,
+    pub capabilities_required: Vec&lt;CapabilityName&gt;,
+    pub eval_results: Option&lt;serde_json::Value&gt;,
+    pub status: SkillStatus,
+    pub created_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SkillStatus {
+    Candidate,
+    Active,
+    Retired,
+}
+</code></pre>
+
+<!-- ── Error taxonomy ── -->
+<h3>Error Taxonomy</h3>
+
+<pre><code class="language-rust">/// Unified error type crossing the FFI boundary.
+/// Each variant carries enough context for structured Kotlin exceptions.
+#[derive(Debug, thiserror::Error)]
+pub enum WaywiserError {
+    // ── Pi core ──
+    #[error("session not found: {0}")]
+    SessionNotFound(SessionId),
+    #[error("lane not found: {0}")]
+    LaneNotFound(LaneId),
+    #[error("session corrupted: {reason}")]
+    SessionCorrupted { session_id: SessionId, reason: String },
+    #[error("compaction failed: {0}")]
+    CompactionFailed(String),
+
+    // ── Inference ──
+    #[error("inference unavailable: {0}")]
+    InferenceUnavailable(String),
+    #[error("inference timeout after {ms}ms")]
+    InferenceTimeout { ms: u64 },
+    #[error("model identity mismatch: expected {expected}, got {actual}")]
+    ModelMismatch { expected: String, actual: String },
+    #[error("streaming interrupted: {0}")]
+    StreamInterrupted(String),
+
+    // ── Security ──
+    #[error("capability not registered: {0:?}")]
+    UnknownCapability(CapabilityName),
+    #[error("action denied: {reason}")]
+    ActionDenied { intent_id: Uuid, reason: String },
+    #[error("lease expired: {lease_id}")]
+    LeaseExpired { lease_id: Uuid },
+
+    // ── Memory / Brain ──
+    #[error("memory store error: {0}")]
+    MemoryStore(String),
+    #[error("brain pass failed: {0}")]
+    BrainPassFailed(String),
+
+    // ── Skill ──
+    #[error("skill load error: {path}: {reason}")]
+    SkillLoadError { path: String, reason: String },
+
+    // ── Storage ──
+    #[error("database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
+    // ── FFI ──
+    #[error("internal panic caught: {0}")]
+    InternalPanic(String),
+}
+</code></pre>
+
+</div>
+
+
+<!-- ============================================================
+     P0: FOUNDATION — prove Native Pi + Native Waywiser
+     ============================================================ -->
+<div class="phase-section" id="p0-foundation">
+
+<h2>P0: Foundation</h2>
+
+<div class="phase-meta">
+  <p><strong>Goal:</strong> Prove Native Pi + Native Waywiser core on Android (blueprint §79).</p>
+  <p><strong>Timeline:</strong> Months 1–3 with 4 engineers.</p>
+  <p><strong>Entry criteria:</strong> None (greenfield Rust + Kotlin project).</p>
+  <p><strong>Exit criteria:</strong> Vertical integration slice working end-to-end (§80).</p>
+</div>
+
+<!-- ── 1. pi-core ── -->
+<h3>1. pi-core <small>(Rust crate)</small></h3>
+<p>The portable agent runtime: loop, sessions, state machine, compaction, recovery. No Android or Waywiser dependencies.</p>
+
+<h4>AgentLoop</h4>
+
+<pre><code class="language-rust">/// Core agent cycle: prepare context → send to model → process response.
+#[async_trait]
+pub trait AgentLoop: Send + Sync {
+    /// Build the context window for the next model call.
+    async fn prepare(&amp;self, session: &amp;SessionState) -> Result&lt;PreparedContext, WaywiserError&gt;;
+
+    /// Send prepared context to the inference backend, streaming tokens back.
+    async fn execute(
+        &amp;self,
+        ctx: PreparedContext,
+        backend: &amp;dyn InferenceBackend,
+        cancel: CancellationToken,
+    ) -> Result&lt;ExecutionResult, WaywiserError&gt;;
+
+    /// Apply the model's response: persist records, enqueue follow-ups, run tools.
+    async fn finalize(
+        &amp;self,
+        result: ExecutionResult,
+        session: &amp;mut SessionState,
+        store: &amp;dyn SessionBackend,
+    ) -> Result&lt;FinalizeOutcome, WaywiserError&gt;;
+}
+
+#[derive(Debug)]
+pub enum FinalizeOutcome {
+    /// Turn complete, no pending work.
+    Done,
+    /// Model requested tool calls; loop must execute them and re-enter.
+    ToolCallsPending(Vec&lt;ToolCall&gt;),
+    /// Model requested a follow-up turn.
+    FollowUp,
+    /// Steering request arrived mid-turn; re-prepare.
+    Steered(SteerRequest),
+    /// Abort requested.
+    Aborted,
+}
+</code></pre>
+
+<h4>AgentMessage</h4>
+
+<pre><code class="language-rust">#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AgentMessage {
+    User(UserMessage),
+    Assistant(AssistantMessage),
+    Tool(ToolMessage),
+    System(SystemMessage),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserMessage {
+    pub id: EntryId,
+    pub content: MessageContent,
+    pub timestamp: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssistantMessage {
+    pub id: EntryId,
+    pub content: MessageContent,
+    pub tool_calls: Vec&lt;ToolCall&gt;,
+    pub thinking: Option&lt;String&gt;,
+    pub usage: TokenUsage,
+    pub timestamp: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolMessage {
+    pub id: EntryId,
+    pub tool_call_id: String,
+    pub name: String,
+    pub content: MessageContent,
+    pub timestamp: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemMessage {
+    pub id: EntryId,
+    pub content: String,
+    pub timestamp: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageContent {
+    Text(String),
+    Parts(Vec&lt;ContentPart&gt;),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContentPart {
+    Text(String),
+    Image { media_type: String, data: Vec&lt;u8&gt; },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub thinking_tokens: u32,
+}
+</code></pre>
+
+<h4>SessionState</h4>
+
+<pre><code class="language-rust">/// Durable session: a tree of lanes with branches (§7.1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionState {
+    pub id: SessionId,
+    pub lanes: Vec&lt;Lane&gt;,
+    pub active_lane_id: LaneId,
+    pub branches: Vec&lt;Branch&gt;,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub updated_at: DateTime&lt;Utc&gt;,
+    pub usage: AggregateUsage,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Lane {
+    pub id: LaneId,
+    pub entries: Vec&lt;Entry&gt;,
+    pub queue: LaneQueue,
+    pub status: LaneStatus,
+    pub parent_branch: Option&lt;Uuid&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LaneQueue {
+    pub pending_steer: Option&lt;SteerRequest&gt;,
+    pub pending_follow_up: Option&lt;FollowUpRequest&gt;,
+    pub next_run: Option&lt;NextRunRequest&gt;,
+    pub deferred: Vec&lt;DeferredItem&gt;,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LaneStatus {
+    Active,
+    Paused,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entry {
+    pub id: EntryId,
+    pub message: AgentMessage,
+    pub records: Vec&lt;OperationRecord&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Branch {
+    pub id: Uuid,
+    pub parent_lane_id: LaneId,
+    pub child_lane_id: LaneId,
+    pub branch_point: EntryId,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteerRequest {
+    pub content: String,
+    pub requested_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FollowUpRequest {
+    pub reason: String,
+    pub requested_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NextRunRequest {
+    pub context: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeferredItem {
+    pub id: Uuid,
+    pub payload: serde_json::Value,
+    pub deferred_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AggregateUsage {
+    pub total_prompt_tokens: u64,
+    pub total_completion_tokens: u64,
+    pub total_thinking_tokens: u64,
+    pub turn_count: u32,
+}
+</code></pre>
+
+<h4>SessionReducer — Recovery FSM</h4>
+<p>The reducer is the hardest porting target (Pi's <code>reducer.ts</code>, 744 LOC). It manages state transitions with corruption detection and TOCTOU guards.</p>
+
+<pre><code class="language-rust">#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReducerState {
+    Idle,
+    Preparing,
+    Executing,
+    Finalizing,
+    Recovering { attempt: u32 },
+    Aborted,
+}
+
+#[derive(Debug, Clone)]
+pub enum ReducerAction {
+    StartPrepare,
+    PrepareComplete(PreparedContext),
+    StartExecute,
+    StreamChunk(StreamEvent),
+    ExecuteComplete(ExecutionResult),
+    StartFinalize,
+    FinalizeComplete(FinalizeOutcome),
+    Steer(SteerRequest),
+    FollowUp(FollowUpRequest),
+    Abort,
+    ToolResult { call_id: String, result: ToolMessage },
+    CorruptionDetected(CorruptionKind),
+    RecoveryAttempt,
+    RecoverySucceeded,
+    RecoveryFailed(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum CorruptionKind {
+    /// Record log has entries that don't match session state.
+    RecordLogMismatch,
+    /// Lane references an entry that doesn't exist.
+    DanglingEntry(EntryId),
+    /// Unexpected state after process recovery.
+    StaleState { expected: ReducerState, found: ReducerState },
+}
+</code></pre>
+
+<h4>Reducer State Transition Table</h4>
+<div class="spec-table">
+<table>
+  <thead>
+    <tr><th>From</th><th>Action</th><th>To</th><th>Side Effects</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Idle</td><td>StartPrepare</td><td>Preparing</td><td>Begin context assembly</td></tr>
+    <tr><td>Idle</td><td>Steer(req)</td><td>Idle</td><td>Enqueue in lane.queue.pending_steer</td></tr>
+    <tr><td>Preparing</td><td>PrepareComplete(ctx)</td><td>Executing</td><td>Send to inference backend</td></tr>
+    <tr><td>Preparing</td><td>Steer(req)</td><td>Preparing</td><td>Replace pending_steer, restart prepare</td></tr>
+    <tr><td>Preparing</td><td>Abort</td><td>Aborted</td><td>Cancel preparation</td></tr>
+    <tr><td>Executing</td><td>StreamChunk(evt)</td><td>Executing</td><td>Forward to UI via FFI event stream</td></tr>
+    <tr><td>Executing</td><td>ExecuteComplete(res)</td><td>Finalizing</td><td>Begin finalization</td></tr>
+    <tr><td>Executing</td><td>Steer(req)</td><td>Executing</td><td>Enqueue; applied after current turn</td></tr>
+    <tr><td>Executing</td><td>Abort</td><td>Aborted</td><td>Cancel inference, drop partial result</td></tr>
+    <tr><td>Finalizing</td><td>FinalizeComplete(Done)</td><td>Idle</td><td>Persist records; drain queue</td></tr>
+    <tr><td>Finalizing</td><td>FinalizeComplete(ToolCallsPending)</td><td>Idle</td><td>Execute tools, enqueue ToolResult</td></tr>
+    <tr><td>Finalizing</td><td>FinalizeComplete(FollowUp)</td><td>Preparing</td><td>Re-enter loop</td></tr>
+    <tr><td>Finalizing</td><td>FinalizeComplete(Steered)</td><td>Preparing</td><td>Apply steer, re-enter loop</td></tr>
+    <tr><td>Any</td><td>CorruptionDetected(kind)</td><td>Recovering{0}</td><td>Log corruption, attempt repair</td></tr>
+    <tr><td>Recovering{n}</td><td>RecoverySucceeded</td><td>Idle</td><td>Resume normal operation</td></tr>
+    <tr><td>Recovering{n &lt; 3}</td><td>RecoveryFailed</td><td>Recovering{n+1}</td><td>Retry with broader repair</td></tr>
+    <tr><td>Recovering{3}</td><td>RecoveryFailed</td><td>Aborted</td><td>Emit SessionCorrupted error</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>OperationRecord</h4>
+<pre><code class="language-rust">/// Every mutation to session state is captured as a durable record (§7.1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum OperationRecord {
+    TurnStarted { entry_id: EntryId, timestamp: DateTime&lt;Utc&gt; },
+    TurnCompleted { entry_id: EntryId, usage: TokenUsage, timestamp: DateTime&lt;Utc&gt; },
+    ToolCallStarted { call_id: String, name: String, replay: ReplayPolicy, timestamp: DateTime&lt;Utc&gt; },
+    ToolCallCompleted { call_id: String, success: bool, timestamp: DateTime&lt;Utc&gt; },
+    SteerApplied { request: SteerRequest, timestamp: DateTime&lt;Utc&gt; },
+    FollowUpQueued { reason: String, timestamp: DateTime&lt;Utc&gt; },
+    AbortRequested { timestamp: DateTime&lt;Utc&gt; },
+    CompactionPerformed { lane_id: LaneId, entries_removed: u32, timestamp: DateTime&lt;Utc&gt; },
+    LaneCreated { lane_id: LaneId, parent_branch: Option&lt;Uuid&gt;, timestamp: DateTime&lt;Utc&gt; },
+    LaneStatusChanged { lane_id: LaneId, from: LaneStatus, to: LaneStatus, timestamp: DateTime&lt;Utc&gt; },
+    BranchCreated { branch: Branch, timestamp: DateTime&lt;Utc&gt; },
+    ContextTransformed { description: String, timestamp: DateTime&lt;Utc&gt; },
+    RecoveryPerformed { kind: CorruptionKind, success: bool, timestamp: DateTime&lt;Utc&gt; },
+}
+</code></pre>
+
+<h4>Compaction</h4>
+<pre><code class="language-rust">/// Strategy for reducing context size while preserving semantics (§7.1).
+#[async_trait]
+pub trait CompactionEngine: Send + Sync {
+    /// Decide which entries to compact from a lane.
+    async fn select_for_compaction(
+        &amp;self,
+        lane: &amp;Lane,
+        budget: CompactionBudget,
+    ) -> Result&lt;CompactionPlan, WaywiserError&gt;;
+
+    /// Execute the compaction plan: summarize removed entries into a single summary entry.
+    async fn compact(
+        &amp;self,
+        plan: CompactionPlan,
+        backend: &amp;dyn InferenceBackend,
+    ) -> Result&lt;Entry, WaywiserError&gt;;
+}
+
+#[derive(Debug, Clone)]
+pub struct CompactionBudget {
+    /// Maximum entries to retain after compaction.
+    pub max_entries: usize,
+    /// Maximum tokens in the context window.
+    pub max_tokens: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompactionPlan {
+    pub lane_id: LaneId,
+    pub entries_to_remove: Vec&lt;EntryId&gt;,
+    pub entries_to_keep: Vec&lt;EntryId&gt;,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ToolExecutionMode {
+    Sequential,
+    Parallel,
+}
+</code></pre>
+
+<h4>Key Behaviors</h4>
+<ul>
+  <li>The loop drains the lane queue after every <code>FinalizeOutcome::Done</code>: pending_steer &gt; pending_follow_up &gt; next_run &gt; deferred (priority order).</li>
+  <li>Steer requests arriving during Executing are queued, not applied immediately.</li>
+  <li>Recovery attempts up to 3 times with escalating repair: (1) re-read from store, (2) rebuild lane from records, (3) truncate corrupted tail.</li>
+  <li>All state transitions are logged as <code>OperationRecord</code> entries before the transition occurs (write-ahead).</li>
+</ul>
+
+<h4>Error Types</h4>
+<p>Uses <code>WaywiserError::SessionNotFound</code>, <code>SessionCorrupted</code>, <code>CompactionFailed</code>.</p>
+
+<h4>Testing</h4>
+<p>Conformance suite (component 7) drives all agent loop tests. Additionally: property tests for reducer state machine (no invalid transition reachable), fuzz OperationRecord deserialization.</p>
+
+<!-- ── 2. pi-session-sqlite ── -->
+<h3>2. pi-session-sqlite <small>(Rust crate)</small></h3>
+<p>Durable session storage. Implements the <code>SessionBackend</code> trait against SQLite via <code>rusqlite</code>.</p>
+
+<pre><code class="language-rust">#[async_trait]
+pub trait SessionBackend: Send + Sync {
+    // ── Session CRUD ──
+    async fn create_session(&amp;self, session: &amp;SessionState) -> Result&lt;(), WaywiserError&gt;;
+    async fn load_session(&amp;self, id: SessionId) -> Result&lt;Option&lt;SessionState&gt;, WaywiserError&gt;;
+    async fn save_session(&amp;self, session: &amp;SessionState) -> Result&lt;(), WaywiserError&gt;;
+    async fn delete_session(&amp;self, id: SessionId) -> Result&lt;bool, WaywiserError&gt;;
+    async fn list_sessions(&amp;self, limit: u32, offset: u32) -> Result&lt;Vec&lt;SessionSummary&gt;, WaywiserError&gt;;
+
+    // ── Lane operations ──
+    async fn append_entry(&amp;self, session_id: SessionId, lane_id: LaneId, entry: &amp;Entry) -> Result&lt;(), WaywiserError&gt;;
+    async fn update_lane_queue(&amp;self, session_id: SessionId, lane_id: LaneId, queue: &amp;LaneQueue) -> Result&lt;(), WaywiserError&gt;;
+
+    // ── Records ──
+    async fn append_record(&amp;self, session_id: SessionId, record: &amp;OperationRecord) -> Result&lt;(), WaywiserError&gt;;
+    async fn load_records(&amp;self, session_id: SessionId) -> Result&lt;Vec&lt;OperationRecord&gt;, WaywiserError&gt;;
+
+    // ── Compaction ──
+    async fn remove_entries(&amp;self, session_id: SessionId, lane_id: LaneId, ids: &amp;[EntryId]) -> Result&lt;(), WaywiserError&gt;;
+
+    // ── Mutation metadata (§69) ──
+    async fn record_mutation(&amp;self, meta: MutationMeta) -> Result&lt;(), WaywiserError&gt;;
+}
+
+#[derive(Debug, Clone)]
+pub struct MutationMeta {
+    pub mutation_id: Uuid,
+    pub device_id: DeviceId,
+    pub local_sequence: u64,
+    pub wall_clock: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionSummary {
+    pub id: SessionId,
+    pub turn_count: u32,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub updated_at: DateTime&lt;Utc&gt;,
+}
+</code></pre>
+
+<h4>Implementation Notes</h4>
+<ul>
+  <li>WAL journal mode for concurrent reads during writes.</li>
+  <li>Single writer, multiple readers via <code>r2d2</code> connection pool.</li>
+  <li>Schema migrations via embedded SQL files with version tracking table.</li>
+  <li>Session state serialized as CBOR blobs for lanes/entries; records stored row-per-record for query.</li>
+  <li>All writes within a single SQLite transaction per <code>save_session</code> call.</li>
+</ul>
+
+<h4>Testing</h4>
+<p>Conformance suite fixtures (component 7) run against this backend. Additionally: concurrent read/write stress test, WAL checkpoint behavior, migration up/down round-trip.</p>
+
+<!-- ── 3. pi-inference ── -->
+<h3>3. pi-inference <small>(Rust crate)</small></h3>
+<p>Single-provider inference transport. OpenAI-compatible HTTP client targeting Ollama with Qwen3.8-27B.</p>
+
+<pre><code class="language-rust">#[async_trait]
+pub trait InferenceBackend: Send + Sync {
+    /// Non-streaming completion.
+    async fn complete(
+        &amp;self,
+        request: CompletionRequest,
+    ) -> Result&lt;CompletionResponse, WaywiserError&gt;;
+
+    /// Streaming completion. Yields events through the sender.
+    async fn complete_streaming(
+        &amp;self,
+        request: CompletionRequest,
+        tx: tokio::sync::mpsc::Sender&lt;StreamEvent&gt;,
+        cancel: CancellationToken,
+    ) -> Result&lt;CompletionResponse, WaywiserError&gt;;
+
+    /// Verify model identity matches expected manifest (§41).
+    async fn verify_manifest(&amp;self) -> Result&lt;ModelManifest, WaywiserError&gt;;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionRequest {
+    pub messages: Vec&lt;AgentMessage&gt;,
+    pub tools: Vec&lt;ToolDefinition&gt;,
+    pub thinking: ThinkingConfig,
+    pub max_tokens: Option&lt;u32&gt;,
+    pub temperature: Option&lt;f32&gt;,
+    pub response_format: Option&lt;ResponseFormat&gt;,
+}
+
+/// Qwen3.8-27B defaults to "xhigh" thinking which wastes tokens (research finding).
+/// Default to Medium for interactive, Low for tool calls, XHigh only for reflection.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ThinkingConfig {
+    pub enabled: bool,
+    pub reasoning_effort: ReasoningEffort,
+    pub max_thinking_tokens: Option&lt;u32&gt;,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    XHigh,
+}
+
+impl Default for ThinkingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            reasoning_effort: ReasoningEffort::Medium, // NOT xhigh
+            max_thinking_tokens: Some(4096),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StreamEvent {
+    /// A text delta from the model.
+    TextDelta(String),
+    /// A thinking/reasoning delta.
+    ThinkingDelta(String),
+    /// A tool call being constructed.
+    ToolCallDelta { index: u32, id: Option&lt;String&gt;, name: Option&lt;String&gt;, arguments_delta: String },
+    /// Usage information (arrives at end).
+    Usage(TokenUsage),
+    /// Stream finished.
+    Done,
+    /// An error during streaming.
+    Error(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionResponse {
+    pub message: AssistantMessage,
+    pub finish_reason: FinishReason,
+    pub model: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum FinishReason {
+    Stop,
+    ToolCalls,
+    Length,
+    ContentFilter,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub parameters: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ResponseFormat {
+    Json,
+    JsonSchema(serde_json::Value),
+}
+
+/// Model manifest (§41). A silent server-side swap is a health failure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelManifest {
+    pub protocol: u32,
+    pub backend: String,
+    pub alias: String,
+    pub family: String,
+    pub artifact: String,
+    pub sha256: Option&lt;String&gt;,
+    pub capabilities: ModelCapabilities,
+    pub operational_context: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCapabilities {
+    pub text: bool,
+    pub vision: bool,
+    pub tools: bool,
+    pub thinking: bool,
+}
+</code></pre>
+
+<h4>OllamaBackend</h4>
+<ul>
+  <li>HTTP client via <code>reqwest</code> with streaming SSE parsing.</li>
+  <li>Base URL configurable; default <code>http://localhost:11434</code>.</li>
+  <li>Maps to <code>/v1/chat/completions</code> (OpenAI-compatible endpoint).</li>
+  <li>Cancellation: drop the <code>reqwest::Response</code> to close the connection (server-side generation stops).</li>
+  <li>Startup health check verifies model manifest (§41) and rejects mismatches.</li>
+  <li>Auth header from Android Keystore token.</li>
+</ul>
+
+<h4>Testing</h4>
+<p>Mock HTTP server returning canned SSE streams. Test: normal completion, tool calls, streaming cancellation, network timeout, model mismatch detection, malformed SSE handling.</p>
+
+<!-- ── 4. waywiser-core ── -->
+<h3>4. waywiser-core <small>(Rust crate)</small></h3>
+<p>Waywiser's domain services. Each is a focused struct behind a trait for testability.</p>
+
+<pre><code class="language-rust">/// Central service registry (§9). Not an extension chain — a service graph.
+pub struct WaywiserKernel {
+    pub identity: IdentityService,
+    pub memory: MemoryService,
+    pub brain: BrainService,
+    pub permission: PermissionService,
+    pub skills: SkillService,
+}
+</code></pre>
+
+<h4>IdentityService</h4>
+<pre><code class="language-rust">/// Parses and budgets SOUL.md / USER.md for agent context injection (§10).
+pub struct IdentityService {
+    soul: ParsedIdentity,
+    user: ParsedIdentity,
+}
+
+pub struct ParsedIdentity {
+    pub raw: String,
+    pub sections: Vec&lt;IdentitySection&gt;,
+    pub token_estimate: u32,
+}
+
+impl IdentityService {
+    pub fn load(soul_path: &amp;Path, user_path: &amp;Path) -> Result&lt;Self, WaywiserError&gt;;
+    /// Returns identity text budgeted to fit within max_tokens.
+    pub fn project(&amp;self, max_tokens: u32) -> String;
+}
+</code></pre>
+
+<h4>MemoryService (basic)</h4>
+<pre><code class="language-rust">#[async_trait]
+pub trait MemoryStore: Send + Sync {
+    async fn store(&amp;self, record: &amp;MemoryRecord) -> Result&lt;(), WaywiserError&gt;;
+    async fn recall(&amp;self, query: &amp;str, limit: u32) -> Result&lt;Vec&lt;MemoryRecord&gt;, WaywiserError&gt;;
+    async fn get(&amp;self, id: Uuid) -> Result&lt;Option&lt;MemoryRecord&gt;, WaywiserError&gt;;
+    async fn update(&amp;self, record: &amp;MemoryRecord) -> Result&lt;(), WaywiserError&gt;;
+    async fn delete(&amp;self, id: Uuid) -> Result&lt;bool, WaywiserError&gt;;
+    async fn search_fts(&amp;self, query: &amp;str, limit: u32) -> Result&lt;Vec&lt;MemoryRecord&gt;, WaywiserError&gt;;
+}
+
+/// P0 implementation: SQLite FTS5 lexical recall only.
+/// Semantic (vector) recall added in P2.
+pub struct SqliteMemoryStore { /* rusqlite pool */ }
+</code></pre>
+
+<h4>BrainService (Pass 1 only)</h4>
+<pre><code class="language-rust">/// Deterministic Pass 1 extraction (§29). No model-driven reflection in P0.
+pub struct BrainService;
+
+impl BrainService {
+    /// Extract deterministic signals from an experience.
+    /// Does NOT call the model. Pure rule-based extraction.
+    pub fn pass1_extract(&amp;self, experience: &amp;ExperienceRecord) -> Vec&lt;Pass1Signal&gt;;
+
+    /// Persist experience for future Pass 2 (deferred to P2).
+    pub async fn persist_experience(
+        &amp;self,
+        experience: ExperienceRecord,
+        store: &amp;dyn ExperienceStore,
+    ) -> Result&lt;(), WaywiserError&gt;;
+}
+
+#[derive(Debug, Clone)]
+pub struct Pass1Signal {
+    pub kind: String,
+    pub content: String,
+    pub confidence: f32,
+}
+</code></pre>
+
+<h4>PermissionService (basic)</h4>
+<pre><code class="language-rust">/// Basic security kernel (§18). Full lease model in P1.
+pub struct PermissionService {
+    registry: HashMap&lt;CapabilityName, CapabilitySpec&gt;,
+}
+
+impl PermissionService {
+    /// Check whether a capability exists and classify risk.
+    pub fn evaluate(&amp;self, intent: &amp;ActionIntent) -> PermissionDecision;
+
+    pub fn register_capability(&amp;mut self, spec: CapabilitySpec);
+}
+
+#[derive(Debug)]
+pub enum PermissionDecision {
+    /// Capability exists, risk acceptable, proceed.
+    Allowed,
+    /// Capability exists but requires user approval.
+    RequiresApproval { risk: RiskLevel, reason: String },
+    /// Unknown capability — fail closed (I9).
+    Denied { reason: String },
+}
+</code></pre>
+
+<h4>SkillService</h4>
+<pre><code class="language-rust">/// Load skills from SKILL.md + manifest.yaml (§33). No evolution in P0.
+pub struct SkillService {
+    active_skills: Vec&lt;LoadedSkill&gt;,
+}
+
+pub struct LoadedSkill {
+    pub version: SkillVersion,
+    pub guidance: String,
+    pub tools: Vec&lt;ToolDefinition&gt;,
+}
+
+impl SkillService {
+    pub fn load_from_directory(path: &amp;Path) -> Result&lt;Self, WaywiserError&gt;;
+    pub fn active_tools(&amp;self) -> Vec&lt;&amp;ToolDefinition&gt;;
+    pub fn guidance_for_context(&amp;self, budget: u32) -> String;
+}
+</code></pre>
+
+<!-- ── 5. ffi-bridge ── -->
+<h3>5. ffi-bridge <small>(Rust + Kotlin)</small></h3>
+<p>UniFFI v0.32 bridge between Rust runtime and Kotlin/Compose host. Research confirmed: no native streaming primitive exists — we build our own.</p>
+
+<h4>Rust side (UniFFI exports)</h4>
+<pre><code class="language-rust">/// Top-level FFI interface. Every public method wraps in catch_unwind.
+#[derive(uniffi::Object)]
+pub struct WaywiserRuntime { /* internal state */ }
+
+#[uniffi::export]
+impl WaywiserRuntime {
+    /// Initialize from SQLite path + inference config. Rebuilds state from DB.
+    #[uniffi::constructor]
+    pub fn new(config: RuntimeConfig) -> Result&lt;Self, WaywiserError&gt;;
+
+    /// Send a user message. Returns immediately; events arrive via poll_event.
+    pub fn send_message(&amp;self, content: String) -> Result&lt;(), WaywiserError&gt;;
+
+    /// Blocking poll for the next event. Called from Kotlin suspend fun on IO dispatcher.
+    /// Returns None after 30s timeout (heartbeat).
+    pub fn poll_event(&amp;self) -> Result&lt;Option&lt;RuntimeEvent&gt;, WaywiserError&gt;;
+
+    /// Cancel the current agent turn.
+    pub fn cancel(&amp;self) -> Result&lt;(), WaywiserError&gt;;
+
+    /// Steer the current turn with new context.
+    pub fn steer(&amp;self, content: String) -> Result&lt;(), WaywiserError&gt;;
+
+    /// List available sessions.
+    pub fn list_sessions(&amp;self) -> Result&lt;Vec&lt;SessionSummary&gt;, WaywiserError&gt;;
+
+    /// Load a specific session.
+    pub fn load_session(&amp;self, id: String) -> Result&lt;(), WaywiserError&gt;;
+
+    /// Create a new session.
+    pub fn create_session(&amp;self) -> Result&lt;String, WaywiserError&gt;;
+
+    /// Shutdown gracefully. Cancels any running turn, flushes state.
+    pub fn shutdown(&amp;self) -> Result&lt;(), WaywiserError&gt;;
+}
+
+/// Events delivered to Kotlin via poll_event.
+#[derive(uniffi::Enum)]
+pub enum RuntimeEvent {
+    /// Streamed text delta from the model.
+    TextDelta { text: String },
+    /// Model is "thinking" (reasoning block).
+    ThinkingDelta { text: String },
+    /// A tool call is being executed.
+    ToolCallStarted { id: String, name: String },
+    /// Tool call completed.
+    ToolCallCompleted { id: String, success: bool, summary: String },
+    /// Turn completed.
+    TurnComplete { usage: TokenUsage },
+    /// An error occurred.
+    Error { code: String, message: String },
+    /// Session state changed.
+    SessionChanged { session_id: String },
+    /// Heartbeat (no-op, keeps the poll alive).
+    Heartbeat,
+}
+
+#[derive(uniffi::Record)]
+pub struct RuntimeConfig {
+    pub db_path: String,
+    pub inference_url: String,
+    pub inference_token: String,
+    pub model_alias: String,
+    pub soul_path: String,
+    pub user_path: String,
+    pub skills_path: String,
+}
+</code></pre>
+
+<h4>Kotlin side</h4>
+<pre><code class="language-kotlin">// Repository bridging Rust events to Compose StateFlow.
+class WaywiserRepository(private val runtime: WaywiserRuntime) {
+
+    private val _events = MutableSharedFlow&lt;RuntimeEvent&gt;(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val events: SharedFlow&lt;RuntimeEvent&gt; = _events
+
+    private var pollJob: Job? = null
+
+    fun startPolling(scope: CoroutineScope) {
+        pollJob = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                try {
+                    val event = runtime.pollEvent() ?: continue
+                    _events.emit(event)
+                } catch (e: WaywiserException) {
+                    _events.emit(RuntimeEvent.Error(e.code, e.message ?: "unknown"))
+                }
+            }
+        }
+    }
+
+    fun stopPolling() { pollJob?.cancel() }
+
+    suspend fun sendMessage(content: String) = withContext(Dispatchers.IO) {
+        runtime.sendMessage(content)
+    }
+
+    suspend fun cancel() = withContext(Dispatchers.IO) {
+        runtime.cancel()
+    }
+}
+</code></pre>
+
+<h4>Mandatory FFI Discipline</h4>
+<ul>
+  <li><code>std::panic::catch_unwind</code> wraps EVERY UniFFI-exported function. CI lint (<code>clippy</code> custom lint or build script) fails the build if any exported fn lacks it.</li>
+  <li><code>Cargo.toml</code>: <code>panic = "unwind"</code> (never <code>"abort"</code>).</li>
+  <li>Megazord pattern: single <code>libwaywiser.so</code> containing all Rust crates.</li>
+  <li>Kotlin callbacks (if any) use weak references; <code>uniffiIsDestroyed</code> checked before invoking.</li>
+</ul>
+
+<h4>Testing</h4>
+<p>JVM-based integration test: construct <code>WaywiserRuntime</code> with in-memory SQLite + mock inference → send message → assert events arrive via <code>poll_event</code>. Android instrumented test: lifecycle (Activity destroy/recreate, process death), soak for JNI ref leaks.</p>
+
+<!-- ── 6. android-host ── -->
+<h3>6. android-host <small>(Kotlin / Jetpack Compose)</small></h3>
+<p>Minimal Android shell hosting the Rust runtime. Conversation UI only in P0.</p>
+
+<h4>Architecture</h4>
+<pre><code class="language-kotlin">// ViewModel survives config changes. Process death → rebuild from SQLite.
+class ConversationViewModel(
+    private val repo: WaywiserRepository
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(ConversationUiState())
+    val uiState: StateFlow&lt;ConversationUiState&gt; = _uiState.asStateFlow()
+
+    init {
+        repo.startPolling(viewModelScope)
+        viewModelScope.launch {
+            repo.events.collect { event -&gt;
+                _uiState.update { state -&gt; state.reduce(event) }
+            }
+        }
+    }
+
+    fun sendMessage(text: String) {
+        viewModelScope.launch { repo.sendMessage(text) }
+    }
+
+    fun cancel() {
+        viewModelScope.launch { repo.cancel() }
+    }
+
+    override fun onCleared() {
+        repo.stopPolling()
+        // Runtime.shutdown() called by Application.onTerminate or service unbind
+    }
+}
+
+data class ConversationUiState(
+    val messages: List&lt;UiMessage&gt; = emptyList(),
+    val isStreaming: Boolean = false,
+    val pendingText: String = "",
+    val error: String? = null,
+)
+</code></pre>
+
+<h4>Key Behaviors</h4>
+<ul>
+  <li>Inference token stored in Android Keystore, retrieved at Runtime init (§46).</li>
+  <li><code>System.loadLibrary("waywiser")</code> in <code>Application.onCreate</code>.</li>
+  <li>Process death: <code>WaywiserRuntime.new(config)</code> re-reads all state from SQLite. No <code>SavedStateHandle</code> needed for Rust state.</li>
+  <li>Configuration change (rotation): ViewModel persists, Rust runtime unaffected.</li>
+  <li><code>minSdk = 26</code> (Android 8.0), <code>targetSdk = 36</code> (Android 16).</li>
+</ul>
+
+<h4>Testing</h4>
+<p>Compose UI tests: message list renders, streaming indicator shows/hides, cancel button works. Robolectric: ViewModel lifecycle, process death simulation.</p>
+
+<!-- ── 7. conformance-suite ── -->
+<h3>7. conformance-suite</h3>
+<p>Language-agnostic test fixtures extracted from Pi's existing <code>conformance.ts</code> (1,221 LOC). Both TypeScript and Rust run the same fixtures.</p>
+
+<h4>Fixture Format</h4>
+<pre><code class="language-rust">/// Each fixture is a JSON file describing a scenario.
+#[derive(Debug, Deserialize)]
+pub struct ConformanceFixture {
+    pub name: String,
+    pub description: String,
+    pub setup: FixtureSetup,
+    pub steps: Vec&lt;FixtureStep&gt;,
+    pub expected: FixtureExpectation,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FixtureSetup {
+    pub initial_session: Option&lt;serde_json::Value&gt;,
+    pub initial_entries: Vec&lt;serde_json::Value&gt;,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FixtureStep {
+    pub action: String, // "append_entry", "compact_lane", "steer", etc.
+    pub params: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FixtureExpectation {
+    pub session_state: serde_json::Value,
+    pub records: Vec&lt;serde_json::Value&gt;,
+    pub errors: Vec&lt;String&gt;,
+}
+</code></pre>
+
+<h4>Coverage Areas</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Area</th><th>Fixture Count (est.)</th><th>Source</th></tr></thead>
+  <tbody>
+    <tr><td>Session CRUD</td><td>12–15</td><td>conformance.ts session tests</td></tr>
+    <tr><td>Lane operations (create, status, branch)</td><td>10–12</td><td>conformance.ts lane tests</td></tr>
+    <tr><td>Entry append / ordering</td><td>8–10</td><td>conformance.ts entry tests</td></tr>
+    <tr><td>Compaction (select, execute, boundary)</td><td>8–10</td><td>compaction.test.ts</td></tr>
+    <tr><td>Queue semantics (steer, followUp, deferred)</td><td>10–15</td><td>reducer.test.ts</td></tr>
+    <tr><td>Recovery (corruption detection, repair)</td><td>8–10</td><td>reducer.test.ts recovery cases</td></tr>
+    <tr><td>Operation records (all 13 variants)</td><td>13+</td><td>session/types.ts</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Execution</h4>
+<ul>
+  <li>Rust: <code>cargo test --features conformance</code> loads JSON fixtures from <code>fixtures/</code> and runs each through the Rust <code>SessionBackend</code> + reducer.</li>
+  <li>TypeScript: Jest test loads same JSON fixtures and runs through Pi's <code>SessionBackendFixtureFactory</code>.</li>
+  <li>CI: both must pass on the same fixture set. A fixture change requires both sides to update.</li>
+</ul>
+
+<!-- ── Acceptance Criteria ── -->
+<h3>P0 Acceptance Criteria</h3>
+<ol>
+  <li>User types a question in Compose UI; it reaches the Rust agent loop via the FFI bridge.</li>
+  <li>Rust agent loop assembles context (identity + session history + tool definitions) and sends to Qwen3.8-27B via the Ollama OpenAI-compatible endpoint.</li>
+  <li>Streamed text deltas display in the Compose conversation view in real time.</li>
+  <li>Model proposes a tool call; the permission service authorizes it; the tool executes against one real Android capability (e.g., <code>device.battery_status</code>); the result returns to Qwen; the final answer displays.</li>
+  <li>Session state (lanes, entries, records) is persisted to SQLite and survives: (a) Activity recreation via rotation, (b) process death via system kill + relaunch.</li>
+  <li>Steering: user sends a steer request mid-turn; the agent loop drains it after the current turn completes and re-enters with the steer content.</li>
+  <li>Abort: user cancels mid-stream; inference is cancelled, partial result discarded, session state remains consistent.</li>
+  <li>Model manifest verification: on startup, the runtime checks the Ollama model identity matches expectations; a mismatch emits <code>ModelMismatch</code> error.</li>
+  <li>Thinking budget: interactive turns default to <code>ReasoningEffort::Medium</code>, not <code>XHigh</code>.</li>
+  <li>Conformance suite: all fixtures pass for both Rust and TypeScript runners (session CRUD, lane operations, compaction, recovery, queue semantics).</li>
+  <li>Soak test: 4-hour continuous conversation (scripted) with no JNI global reference leaks, no memory growth beyond 50MB above baseline, no Rust panics reaching the Android process.</li>
+  <li>CI pipeline: <code>cargo test</code>, <code>cargo clippy</code> (including catch_unwind lint), Android instrumented tests, and conformance suite all green.</li>
+</ol>
+
+</div>
+<div class="phase-section" id="p1-product">
+
+<h2>P1: Product — Useful Internal PA Replacing Termux</h2>
+
+<div class="phase-meta">
+  <span class="meta-item"><strong>Timeline:</strong> Months 4–8</span>
+  <span class="meta-item"><strong>Team:</strong> 4 engineers</span>
+  <span class="meta-item"><strong>Entry:</strong> P0 vertical slice working end-to-end</span>
+  <span class="meta-item"><strong>Exit:</strong> Internal team using Waywiser v2 daily instead of Termux</span>
+</div>
+
+<p>P1 transforms the proven Foundation into a daily-use personal assistant. Every component below builds on the Shared Foundations types and P0 crates. Types defined in P0 are referenced by name, not redefined. Extensions are marked explicitly.</p>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-voice">1. VoicePipeline <span class="lang-tag">Kotlin</span></h3>
+
+<h4>State Machine</h4>
+<pre><code class="language-rust">// Mirrored in Kotlin as sealed interface
+enum VoiceState {
+    Idle,
+    Listening { vad_active: bool },
+    Recognizing,        // STT processing
+    Processing,         // Pi agent working
+    Speaking { chunk: usize, total: usize },
+    BargeInDetected,    // transitional: stop TTS → Listening
+    Error(VoiceError),
+}
+
+enum VoiceEvent {
+    MicActivated,           // user presses mic / hotword / widget
+    VadSpeechStart,
+    VadSpeechEnd { audio: AudioSegment },
+    SttResult(String),
+    SttPartial(String),
+    AgentStreamChunk(String),
+    AgentStreamDone,
+    TtsChunkReady(AudioChunk),
+    TtsPlaybackDone,
+    BargeIn,                // VAD fires during Speaking
+    Cancel,
+    ErrorOccurred(VoiceError),
+}
+
+// Transitions
+// Idle → Listening:           on MicActivated
+// Listening → Recognizing:    on VadSpeechEnd
+// Recognizing → Processing:   on SttResult (feed to Pi agent)
+// Processing → Speaking:      on AgentStreamChunk (first chunk)
+// Speaking → Speaking:        on AgentStreamChunk (subsequent)
+// Speaking → Idle:            on TtsPlaybackDone
+// Speaking → BargeInDetected: on BargeIn
+// BargeInDetected → Listening: immediate (stop TTS, steer Pi)
+// Any → Idle:                 on Cancel
+// Any → Error:                on ErrorOccurred</code></pre>
+
+<h4>Kotlin Interface</h4>
+<pre><code class="language-kotlin">class VoiceManager(
+    private val piRuntime: WaywiserRuntime,  // P0 FFI bridge
+    private val tts: TextToSpeech,
+    private val recognizer: SpeechRecognizer,
+) {
+    val state: StateFlow&lt;VoiceState&gt;
+
+    suspend fun activate()            // start listening
+    suspend fun cancel()              // abort any state → Idle
+    fun setBargeInEnabled(enabled: Boolean)
+
+    // Internal: called by NotificationListener or widget
+    fun injectTextInput(text: String) // bypass voice, send to Pi
+}
+
+// VoiceInteractionService — OPTIONAL (cleared on APK reinstall)
+// All invocation paths work without ROLE_ASSISTANT:
+//   app launch, widget, notification, shortcut, share, mic button
+// Post-update MDM hook to re-set Secure Settings if available:
+//   adb shell settings put secure assistant &lt;pkg&gt;/&lt;activity&gt;
+//   adb shell settings put secure voice_interaction_service &lt;pkg&gt;/&lt;service&gt;</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-notifications">2. NotificationIntelligence <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<p><strong>Provisioning requirement:</strong> Android 15+ Enhanced Confirmation Mode (ECM) blocks sideloaded apps from enabling NotificationListenerService. Requires one of: (a) device factory image <code>/system/etc/sysconfig</code> allowlist, (b) MDM programmatic grant, (c) per-device ADB enablement.</p>
+
+<h4>Rust Types (waywiser-notifications crate)</h4>
+<pre><code class="language-rust">/// Normalized notification extracted from Android StatusBarNotification
+struct NormalizedNotification {
+    id: NotificationId,
+    app_package: String,
+    channel_id: Option&lt;String&gt;,
+    title: String,
+    text: String,
+    big_text: Option&lt;String&gt;,
+    person: Option&lt;PersonRef&gt;,        // sender, if identifiable
+    actions: Vec&lt;NotificationAction&gt;,
+    priority: AndroidPriority,
+    category: Option&lt;String&gt;,          // Android notification category
+    posted_at: DateTime&lt;Utc&gt;,
+    is_group_summary: bool,
+    conversation_id: Option&lt;String&gt;,
+}
+
+/// Deterministic classification — no LLM involvement
+struct ClassificationResult {
+    source_rule: ClassificationRule,
+    attention: AttentionDecision,       // from Shared Foundations
+    reason: &amp;'static str,
+}
+
+enum ClassificationRule {
+    ImportantContact(ContactId),        // user-designated → min NOTIFY
+    RepeatedIncomingCall,               // 2+ calls in 5min → HEADS_UP
+    HighPriorityChannel,               // app-declared importance HIGH+
+    KnownAppPolicy(String),            // e.g. "routine CI bot" → max NOTIFY
+    FamilyContact(ContactId),          // known family → min NOTIFY
+    SecurityAlert,                      // Android system security
+    AlarmChannel,                       // alarm/timer
+    Default(AttentionDecision),         // fallback by Android priority
+}
+
+trait NotificationClassifier: Send + Sync {
+    fn classify(&amp;self, notif: &amp;NormalizedNotification) -&gt; ClassificationResult;
+    fn update_policy(&amp;mut self, policy: NotificationPolicy);
+}
+
+/// User-configurable notification policies
+struct NotificationPolicy {
+    important_contacts: Vec&lt;ContactId&gt;,
+    family_contacts: Vec&lt;ContactId&gt;,
+    app_ceilings: HashMap&lt;String, AttentionDecision&gt;,  // package → max
+    app_floors: HashMap&lt;String, AttentionDecision&gt;,    // package → min
+}</code></pre>
+
+<h4>Kotlin Service</h4>
+<pre><code class="language-kotlin">class WaywiserNotificationListener : NotificationListenerService() {
+    // Normalize and forward to Rust classifier
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        val normalized = NotificationNormalizer.normalize(sbn)
+        val result = waywiserRuntime.classifyNotification(normalized)
+        handleAttentionDecision(result.attention, normalized)
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        waywiserRuntime.notificationDismissed(sbn.key)
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-calendar">3. CalendarIntegration <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<h4>Capabilities Registered</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Capability</th><th>Risk</th><th>Side Effect</th><th>Replay</th><th>Reversible</th></tr></thead>
+  <tbody>
+    <tr><td><code>calendar.read</code></td><td>ReadPersonal</td><td>No</td><td>SafeReplay</td><td>N/A</td></tr>
+    <tr><td><code>calendar.create</code></td><td>CrossAppWrite</td><td>Yes</td><td>VerifyBeforeRetry</td><td>Yes</td></tr>
+    <tr><td><code>calendar.update</code></td><td>CrossAppWrite</td><td>Yes</td><td>VerifyBeforeRetry</td><td>Yes</td></tr>
+    <tr><td><code>calendar.delete</code></td><td>Destructive</td><td>Yes</td><td>NeverReplay</td><td>No</td></tr>
+  </tbody>
+</table>
+</div>
+
+<pre><code class="language-rust">/// Calendar event as seen by Waywiser
+struct CalendarEvent {
+    id: EventId,
+    calendar_id: CalendarId,
+    title: String,
+    start: DateTime&lt;Utc&gt;,
+    end: DateTime&lt;Utc&gt;,
+    location: Option&lt;String&gt;,
+    attendees: Vec&lt;String&gt;,
+    recurrence: Option&lt;String&gt;,        // RRULE
+    all_day: bool,
+}
+
+struct ConflictReport {
+    event_a: EventId,
+    event_b: EventId,
+    overlap: Duration,
+    suggestion: Option&lt;String&gt;,        // from Qwen, not authoritative
+}
+
+trait CalendarService: Send + Sync {
+    fn upcoming(&amp;self, horizon: Duration) -&gt; Result&lt;Vec&lt;CalendarEvent&gt;, CalError&gt;;
+    fn conflicts(&amp;self, horizon: Duration) -&gt; Result&lt;Vec&lt;ConflictReport&gt;, CalError&gt;;
+    // Mutations always go through SecurityKernel via ActionIntent
+    fn create_intent(&amp;self, event: NewCalendarEvent) -&gt; ActionIntent;
+    fn update_intent(&amp;self, id: EventId, patch: CalendarPatch) -&gt; ActionIntent;
+    fn delete_intent(&amp;self, id: EventId, reason: String) -&gt; ActionIntent;
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-capture">4. CaptureSystem <span class="lang-tag">Kotlin</span></h3>
+
+<pre><code class="language-kotlin">/// Unified entry point for all input modalities
+class CaptureManager(
+    private val runtime: WaywiserRuntime,
+    private val voiceManager: VoiceManager,
+) {
+    sealed interface CaptureSource {
+        data class Text(val content: String) : CaptureSource
+        data class Voice(val transcript: String, val audio: Uri?) : CaptureSource
+        data class Camera(val imageUri: Uri, val ocr: String?) : CaptureSource
+        data class ShareSheet(val intent: Intent) : CaptureSource
+        data class File(val uri: Uri, val mimeType: String) : CaptureSource
+    }
+
+    /// All captures → Observation with appropriate RetentionClass
+    suspend fun capture(source: CaptureSource): Observation {
+        val obs = when (source) {
+            is CaptureSource.Text -&gt; Observation(
+                kind = ObservationKind.UserInput,
+                value = source.content,
+                retention = RetentionClass.Session,   // promoted by Brain if durable
+            )
+            is CaptureSource.Camera -&gt; Observation(
+                kind = ObservationKind.VisualCapture,
+                value = source.ocr ?: "[image]",
+                retention = RetentionClass.Experience, // user explicitly captured
+            )
+            // ... other sources
+        }
+        runtime.ingestObservation(obs)
+        return obs
+    }
+}
+
+/// ShareActivity: registered in AndroidManifest for share targets
+class ShareActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        val intent = intent ?: return finish()
+        lifecycleScope.launch {
+            captureManager.capture(CaptureSource.ShareSheet(intent))
+            finish()
+        }
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-background">5. BackgroundScheduler <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<h4>Foreground Service Type Selection</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Type</th><th>Timeout</th><th>Verdict</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr><td><code>dataSync</code></td><td>6h / 24h</td><td class="no">Reject</td><td>Kills Brain reflection</td></tr>
+    <tr><td><code>mediaProcessing</code></td><td>6h / 24h</td><td class="no">Reject</td><td>Kills Brain reflection</td></tr>
+    <tr><td><code>connectedDevice</code></td><td>None</td><td class="maybe">Possible</td><td>Framing inference as device communication</td></tr>
+    <tr><td><code>specialUse</code></td><td>None</td><td class="yes">Use this</td><td>No Play review for internal APK</td></tr>
+  </tbody>
+</table>
+</div>
+
+<pre><code class="language-rust">/// Background work reliability assessment (Rust)
+enum BackgroundHealth {
+    Healthy,            // test jobs execute within 10% of expected time
+    Limited,            // delays up to 5x observed
+    SeverelyRestricted, // jobs fail or delay &gt;10x
+    Unavailable,        // no background execution observed
+}
+
+struct BackgroundReliabilityManager {
+    current_health: BackgroundHealth,
+    last_test_at: DateTime&lt;Utc&gt;,
+    mean_delay_ratio: f32,      // actual / expected
+    missed_jobs_24h: u32,
+}
+
+impl BackgroundReliabilityManager {
+    /// Schedule a noop test job, measure execution delay
+    fn schedule_probe(&amp;mut self) -&gt; ProbeId;
+    /// Called when probe executes — update health assessment
+    fn probe_completed(&amp;mut self, probe_id: ProbeId, scheduled: DateTime&lt;Utc&gt;, actual: DateTime&lt;Utc&gt;);
+    /// Returns current assessment for UI and capability gating
+    fn health(&amp;self) -&gt; BackgroundHealth;
+}</code></pre>
+
+<pre><code class="language-kotlin">/// Foreground service for active inference
+class InferenceService : Service() {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val notification = createNotification("Waywiser is thinking…")
+        // specialUse: requires &lt;property&gt; in manifest with justification
+        ServiceCompat.startForeground(
+            this, NOTIF_ID, notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
+        return START_STICKY
+    }
+}
+
+/// WorkManager for deferred Brain work
+class BrainReflectionWorker(ctx: Context, params: WorkerParameters)
+    : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result {
+        // Check inference slot availability (P2+ delegated)
+        if (!waywiserRuntime.inferenceSlotAvailable(Priority.P3)) {
+            return Result.retry()
+        }
+        waywiserRuntime.runBrainReflection()
+        return Result.success()
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-workgraph">6. WorkGraph <span class="lang-tag">Rust crate: waywiser-work</span></h3>
+
+<pre><code class="language-rust">use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+type GoalId = Uuid;
+type WorkItemId = Uuid;
+
+struct Goal {
+    id: GoalId,
+    title: String,
+    description: String,
+    priority: Priority,
+    status: GoalStatus,
+    created_at: DateTime&lt;Utc&gt;,
+    updated_at: DateTime&lt;Utc&gt;,
+}
+
+enum GoalStatus { Active, Paused, Completed, Abandoned }
+
+struct WorkItem {
+    id: WorkItemId,
+    goal_id: Option&lt;GoalId&gt;,
+    title: String,
+    description: String,
+    status: WorkStatus,
+    priority: Priority,
+    dependencies: Vec&lt;WorkItemId&gt;,
+    assignee: Option&lt;AgentAssignment&gt;,
+    agent_session_id: Option&lt;SessionId&gt;,
+    attempts: u32,
+    due_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    evidence: Vec&lt;EvidenceRef&gt;,
+    result: Option&lt;WorkResult&gt;,
+    approval_state: ApprovalState,
+    created_at: DateTime&lt;Utc&gt;,
+    updated_at: DateTime&lt;Utc&gt;,
+}
+
+enum WorkStatus {
+    Proposed,
+    Ready,          // all dependencies met
+    Running,
+    Review,         // awaiting user/orchestrator review
+    Done,
+    Blocked(BlockReason),
+}
+
+enum AgentAssignment {
+    Primary,
+    Delegated { agent_class: AgentClass, session_id: SessionId },
+}
+
+enum ApprovalState {
+    NotRequired,
+    Pending,
+    Approved { by: ApprovalAuthority, at: DateTime&lt;Utc&gt; },
+    Rejected { reason: String },
+}
+
+/// Kanban is a PROJECTION, not the source of truth
+struct KanbanProjection {
+    columns: Vec&lt;KanbanColumn&gt;,
+}
+
+struct KanbanColumn {
+    name: String,
+    items: Vec&lt;WorkItemId&gt;,
+    wip_limit: Option&lt;usize&gt;,
+}
+
+impl KanbanProjection {
+    fn from_work_items(items: &amp;[WorkItem]) -&gt; Self {
+        // Map WorkStatus → columns:
+        //   Proposed → Backlog
+        //   Ready → Ready
+        //   Running → In Progress
+        //   Review → Review
+        //   Done → Done
+        //   Blocked → Blocked (separate column or overlay)
+        todo!()
+    }
+}
+
+trait WorkGraphService: Send + Sync {
+    fn create_goal(&amp;mut self, title: String, desc: String) -&gt; GoalId;
+    fn create_work_item(&amp;mut self, item: NewWorkItem) -&gt; WorkItemId;
+    fn transition(&amp;mut self, id: WorkItemId, to: WorkStatus) -&gt; Result&lt;(), WorkError&gt;;
+    fn assign(&amp;mut self, id: WorkItemId, assignee: AgentAssignment) -&gt; Result&lt;(), WorkError&gt;;
+    fn dependency_graph(&amp;self) -&gt; DependencyGraph;
+    fn ready_items(&amp;self) -&gt; Vec&lt;&amp;WorkItem&gt;;  // all deps met, not assigned
+    fn kanban(&amp;self) -&gt; KanbanProjection;
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-delegation">7. AgentSupervisor <span class="lang-tag">Rust crate: waywiser-delegation</span></h3>
+
+<pre><code class="language-rust">enum AgentClass {
+    Primary,            // full user-facing context
+    Leaf,               // focused context, CANNOT delegate
+    Orchestrator,       // may create children within budget
+    CognitionWorker,    // internal Brain work, NO external side effects
+    VerificationAgent,  // can inspect evidence, CANNOT mutate external state
+}
+
+struct DelegationBudget {
+    max_children: u8,           // default: 4
+    max_depth: u8,              // HARD CAP: 2
+    max_input_tokens: u64,      // per child
+    max_output_tokens: u64,     // per child
+    max_wall_time: Duration,    // per child
+    max_external_writes: u32,   // per child, CognitionWorker = 0
+}
+
+struct ChildAgent {
+    id: AgentId,
+    class: AgentClass,
+    session_id: SessionId,
+    parent_id: AgentId,
+    budget: DelegationBudget,
+    usage: DelegationUsage,
+    status: ChildAgentStatus,
+    work_item_id: Option&lt;WorkItemId&gt;,
+    created_at: DateTime&lt;Utc&gt;,
+}
+
+enum ChildAgentStatus {
+    Initializing,
+    Running,
+    WaitingForInference,   // queued behind higher-priority work
+    Completed(AgentResult),
+    Failed(AgentError),
+    Cancelled,
+    BudgetExceeded(BudgetViolation),
+}
+
+struct AgentSupervisor {
+    children: Vec&lt;ChildAgent&gt;,
+    inference_queue: PriorityQueue&lt;InferenceRequest&gt;,
+}
+
+impl AgentSupervisor {
+    /// Spawn a child — fails if budget/depth exceeded
+    fn spawn(&amp;mut self, class: AgentClass, context: FocusedContext,
+             budget: DelegationBudget, work_item: Option&lt;WorkItemId&gt;)
+        -&gt; Result&lt;AgentId, DelegationError&gt;;
+
+    /// Cancel a child agent
+    fn cancel(&amp;mut self, id: AgentId) -&gt; Result&lt;(), DelegationError&gt;;
+
+    /// Called when inference slot becomes available
+    fn schedule_next(&amp;mut self) -&gt; Option&lt;InferenceRequest&gt;;
+
+    /// Inference priority ordering
+    /// P0 interactive &gt; P1 foreground &gt; P2 delegated &gt; P3 reflection &gt; P4 evolution
+    fn queue_priority(class: &amp;AgentClass) -&gt; InferencePriority;
+}
+
+/// FocusedContext: subset of full context given to child agents
+struct FocusedContext {
+    task_description: String,
+    relevant_memories: Vec&lt;MemoryRef&gt;,
+    relevant_procedures: Vec&lt;ProcedureRef&gt;,
+    available_capabilities: Vec&lt;CapabilityName&gt;,
+    // Does NOT include full user conversation history
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-proactive">8. ProactiveEngine <span class="lang-tag">Rust crate: waywiser-proactive</span></h3>
+
+<pre><code class="language-rust">/// Basic OODA loop for proactive cognition
+struct ProactiveService {
+    signal_queue: Vec&lt;ProactiveSignal&gt;,
+    deferred_jobs: Vec&lt;DeferredReasoningJob&gt;,
+    rate_limiter: RateLimiter,
+    config: ProactiveConfig,
+}
+
+struct ProactiveConfig {
+    max_actions_per_hour: u32,      // default: 5
+    min_signal_confidence: f32,      // default: 0.7
+    deferred_job_ttl: Duration,      // default: 4 hours
+}
+
+struct ProactiveSignal {
+    id: SignalId,
+    source: SignalSource,
+    observation: ObservationId,
+    assessed_importance: f32,       // 0.0–1.0, deterministic
+    created_at: DateTime&lt;Utc&gt;,
+}
+
+enum SignalSource {
+    CalendarConflict(ConflictReport),
+    UpcomingDeadline { work_item: WorkItemId, due_in: Duration },
+    ImportantNotification(NotificationId),
+    ScheduledReminder(CronJobId),
+    BrainInsight(ExperienceId),
+}
+
+struct DeferredReasoningJob {
+    id: JobId,
+    cause: SignalSource,
+    created_at: DateTime&lt;Utc&gt;,
+    relevance_rule: RelevanceRule,
+    priority: InferencePriority,
+    context_refs: Vec&lt;ContextRef&gt;,
+}
+
+enum RelevanceRule {
+    TimeWindow { expires_at: DateTime&lt;Utc&gt; },
+    ConditionMet(String),                       // human-readable condition
+    Always,
+}
+
+impl ProactiveService {
+    /// OODA: Observe — ingest observation, assess signal importance
+    fn observe(&amp;mut self, obs: &amp;Observation) -&gt; Option&lt;ProactiveSignal&gt;;
+
+    /// OODA: Orient — deterministic filters (calendar, deadline, contacts)
+    fn orient(&amp;self, signal: &amp;ProactiveSignal) -&gt; OrientResult;
+
+    /// OODA: Decide — should we act? Rate limit check, priority check
+    fn decide(&amp;self, oriented: &amp;OrientResult) -&gt; ProactiveDecision;
+
+    /// OODA: Act — create deferred reasoning job or immediate notification
+    fn act(&amp;mut self, decision: ProactiveDecision) -&gt; Result&lt;(), ProactiveError&gt;;
+
+    /// Check deferred jobs: still relevant? Execute or expire
+    fn process_deferred(&amp;mut self) -&gt; Vec&lt;DeferredReasoningJob&gt;;
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-security">9. SecurityKernel — Full Implementation <span class="lang-tag">Rust crate: waywiser-security</span></h3>
+
+<p>This is the most critical component in the entire system. It implements blueprint invariant I2: <em>"LLMs may propose protected state transitions. They do not authorize them."</em></p>
+
+<h4>Authorization Flow</h4>
+<pre><code class="language-rust">/// The authorization pipeline — each step can only maintain or INCREASE risk
+impl SecurityKernel {
+    pub fn authorize(&amp;self, intent: &amp;ActionIntent) -&gt; SecurityDecision {
+        // Step 1: Capability exists?
+        let cap = match self.registry.get(&amp;intent.capability) {
+            Some(c) =&gt; c,
+            None =&gt; return SecurityDecision::Denied(
+                DenialReason::UnknownCapability(intent.capability.clone())
+            ),
+        };
+
+        // Step 2: Risk classification (from CapabilitySpec)
+        let risk = cap.risk;
+
+        // Step 3: Waywiser policy check
+        if let Some(denial) = self.policy.check(intent, &amp;cap) {
+            return SecurityDecision::Denied(denial);
+        }
+
+        // Step 4: OS permission available?
+        if let Some(os_perm) = &amp;cap.os_permission {
+            if !self.os_permissions.is_granted(os_perm) {
+                return SecurityDecision::Denied(
+                    DenialReason::OsPermissionMissing(os_perm.clone())
+                );
+            }
+        }
+
+        // Step 5: Active approval lease?
+        if let Some(lease) = self.find_valid_lease(intent) {
+            if lease.executions_used &lt; lease.max_executions {
+                return SecurityDecision::Allowed(AuthorizationSource::Lease(lease.id));
+            }
+            // Lease exhausted — fall through to approval required
+        }
+
+        // Step 6: Determine approval kind based on risk
+        match risk {
+            RiskLevel::ReadPersonal =&gt; SecurityDecision::Allowed(
+                AuthorizationSource::DefaultPolicy
+            ),
+            RiskLevel::DeviceControl
+            | RiskLevel::CrossAppWrite =&gt; SecurityDecision::RequiresApproval(
+                ApprovalKind::UserConfirm
+            ),
+            RiskLevel::Communication
+            | RiskLevel::Financial
+            | RiskLevel::Destructive =&gt; SecurityDecision::RequiresApproval(
+                ApprovalKind::BiometricConfirm
+            ),
+            RiskLevel::UiUnclassifiedWrite =&gt; SecurityDecision::RequiresApproval(
+                ApprovalKind::UserConfirm
+            ),
+        }
+    }
+}
+
+enum SecurityDecision {
+    Allowed(AuthorizationSource),
+    RequiresApproval(ApprovalKind),
+    Denied(DenialReason),
+}
+
+enum AuthorizationSource {
+    DefaultPolicy,
+    Lease(LeaseId),
+    UserApproval(DateTime&lt;Utc&gt;),
+    BiometricApproval(DateTime&lt;Utc&gt;),
+}
+
+enum ApprovalKind {
+    UserConfirm,        // tap "Allow"
+    BiometricConfirm,   // fingerprint / face + tap
+}
+
+enum DenialReason {
+    UnknownCapability(CapabilityName),
+    PolicyViolation(String),
+    OsPermissionMissing(String),
+    LeaseExpired(LeaseId),
+    BudgetExceeded { lease: LeaseId, used: u32, max: u32 },
+    InvariantViolation(&amp;'static str),
+}</code></pre>
+
+<h4>Approval Leases</h4>
+<pre><code class="language-rust">struct ApprovalLease {
+    id: LeaseId,
+    capability: CapabilityName,
+    scope: LeaseScope,
+    constraints: LeaseConstraints,
+    granted_by: AuthorizationSource,
+    granted_at: DateTime&lt;Utc&gt;,
+    valid_until: DateTime&lt;Utc&gt;,
+    max_executions: u32,
+    executions_used: u32,
+    revoked: bool,
+}
+
+struct LeaseScope {
+    account: Option&lt;String&gt;,        // e.g., "work" calendar
+    target: Option&lt;String&gt;,         // e.g., specific contact
+    action_subset: Option&lt;Vec&lt;String&gt;&gt;, // e.g., ["read", "update"]
+}
+
+struct LeaseConstraints {
+    forbid: Vec&lt;String&gt;,            // e.g., ["delete"]
+    max_per_hour: Option&lt;u32&gt;,
+    require_evidence: bool,
+}
+
+impl SecurityKernel {
+    fn find_valid_lease(&amp;self, intent: &amp;ActionIntent) -&gt; Option&lt;&amp;ApprovalLease&gt; {
+        self.leases.iter().find(|l| {
+            l.capability == intent.capability
+            &amp;&amp; !l.revoked
+            &amp;&amp; l.valid_until &gt; Utc::now()
+            &amp;&amp; l.scope.matches(intent)
+            &amp;&amp; !l.constraints.forbids(intent)
+        })
+    }
+
+    fn grant_lease(&amp;mut self, lease: ApprovalLease) -&gt; LeaseId;
+    fn revoke_lease(&amp;mut self, id: LeaseId);
+    fn record_execution(&amp;mut self, lease_id: LeaseId) -&gt; Result&lt;(), DenialReason&gt;;
+}
+
+/// Audit trail — every authorization decision is recorded
+struct AuditEntry {
+    id: AuditId,
+    intent_id: Uuid,
+    decision: SecurityDecision,
+    capability: CapabilityName,
+    risk: RiskLevel,
+    timestamp: DateTime&lt;Utc&gt;,
+    lease_id: Option&lt;LeaseId&gt;,
+}</code></pre>
+
+<h4>Security Kernel Invariants (property-tested)</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Invariant</th><th>Test Strategy</th></tr></thead>
+  <tbody>
+    <tr><td>Unknown capability → Denied (never executes)</td><td>Fuzz random CapabilityNames against registry</td></tr>
+    <tr><td>Risk can only stay same or increase through pipeline</td><td>Property test: classify N intents, verify monotonic risk</td></tr>
+    <tr><td>Expired lease → cannot authorize</td><td>Time-travel property test</td></tr>
+    <tr><td>Exhausted lease budget → cannot authorize</td><td>Property test: exceed max_executions</td></tr>
+    <tr><td>No LLM involvement in authorization path</td><td>Static analysis: no InferenceBackend dependency</td></tr>
+    <tr><td>Planning cannot bypass permission</td><td>Mutation test: remove check steps, verify tests fail</td></tr>
+    <tr><td>Every decision creates AuditEntry</td><td>Property test: authorize N intents, verify N audit entries</td></tr>
+    <tr><td>Revoked lease → cannot authorize even if within time/budget</td><td>Regression test</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-ledger">10. ActivityLedger <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<pre><code class="language-rust">/// User-facing record of an executed action
+struct LedgerEntry {
+    id: LedgerId,
+    receipt: ActionReceipt,
+    display: LedgerDisplay,
+    created_at: DateTime&lt;Utc&gt;,
+}
+
+struct LedgerDisplay {
+    summary: String,            // "Rescheduled dentist appointment"
+    reason: String,             // "Conflict with flight"
+    authority: String,          // "Calendar lease valid until 20:00"
+    verification: String,       // "External calendar confirmed"
+    can_undo: bool,
+    can_revoke_automation: bool,
+}
+
+trait LedgerService: Send + Sync {
+    fn record(&amp;mut self, receipt: ActionReceipt) -&gt; LedgerId;
+    fn entries(&amp;self, limit: usize, offset: usize) -&gt; Vec&lt;LedgerEntry&gt;;
+    fn undo(&amp;mut self, id: LedgerId) -&gt; Result&lt;ActionReceipt, LedgerError&gt;;
+    fn revoke_automation(&amp;mut self, id: LedgerId) -&gt; Result&lt;(), LedgerError&gt;;
+    // revoke_automation: finds the lease that authorized this action and revokes it
+}</code></pre>
+
+<pre><code class="language-kotlin">@Composable
+fun LedgerScreen(viewModel: LedgerViewModel) {
+    LazyColumn {
+        items(viewModel.entries) { entry -&gt;
+            LedgerCard(
+                summary = entry.display.summary,
+                reason = entry.display.reason,
+                authority = entry.display.authority,
+                verification = entry.display.verification,
+                onUndo = if (entry.display.can_undo) {{ viewModel.undo(entry.id) }} else null,
+                onRevokeAutomation = if (entry.display.can_revoke_automation) {
+                    { viewModel.revokeAutomation(entry.id) }
+                } else null,
+            )
+        }
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-trust">11. TrustCenter <span class="lang-tag">Kotlin</span></h3>
+
+<pre><code class="language-kotlin">/// Main trust/permission management UI
+@Composable
+fun TrustCenterScreen(viewModel: TrustCenterViewModel) {
+    // Tabs: Active Leases | Capabilities | History
+    TabRow(selectedTabIndex = viewModel.selectedTab) { /* ... */ }
+
+    when (viewModel.selectedTab) {
+        0 -&gt; ActiveLeasesTab(viewModel.activeLeases)
+        1 -&gt; CapabilitiesTab(viewModel.capabilities)
+        2 -&gt; HistoryTab(viewModel.auditLog)
+    }
+}
+
+/// Lease card with expiry countdown
+@Composable
+fun LeaseCard(lease: ApprovalLease) {
+    Card {
+        Text(lease.capability.displayName)
+        // Color-coded risk badge
+        RiskBadge(lease.risk)
+        // Countdown to expiry
+        Text("Expires ${lease.valid_until.humanRelative()}")
+        // Usage: 3/5 executions used
+        LinearProgressIndicator(lease.executionsUsed.toFloat() / lease.maxExecutions)
+        // Revoke button
+        TextButton(onClick = { viewModel.revokeLease(lease.id) }) { Text("Revoke") }
+    }
+}
+
+/// Approval flow — triggered by SecurityDecision.RequiresApproval
+class ApprovalActivity : ComponentActivity() {
+    // Shows: what action, why, what risk, which capability
+    // For BiometricConfirm: BiometricPrompt first, then confirm
+    // For UserConfirm: single "Allow" / "Allow for 1 hour" / "Deny"
+    // "Allow for 1 hour" creates an ApprovalLease
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-updater">12. APKUpdater <span class="lang-tag">Kotlin</span></h3>
+
+<pre><code class="language-kotlin">data class UpdateManifest(
+    val version: String,        // "2.4.1"
+    val versionCode: Int,       // 20401
+    val sha256: String,
+    val channel: UpdateChannel,
+    val minSupportedVersion: String,
+    val signature: String,      // detached Ed25519 signature of manifest JSON
+)
+
+enum class UpdateChannel { Dev, Canary, Beta, Stable }
+
+class UpdateManager(
+    private val gitlabBaseUrl: String,
+    private val publicKey: Ed25519PublicKey,  // hardcoded in APK for manifest verification
+) {
+    /// Check for updates — called periodically via WorkManager
+    suspend fun checkForUpdate(currentVersion: String, channel: UpdateChannel): UpdateResult
+
+    /// Verification pipeline (§72):
+    /// 1. Fetch manifest from GitLab release
+    /// 2. Verify manifest signature with hardcoded public key
+    /// 3. Download APK
+    /// 4. Verify APK SHA-256 matches manifest
+    /// 5. Verify APK signing certificate matches expected
+    /// 6. Prompt user to install
+    suspend fun downloadAndVerify(manifest: UpdateManifest): VerifiedApk
+
+    /// Safe mode (§74): if 3+ startup crashes in a row
+    /// Disable: agent runtime, Accessibility, camera, voice, MCP, background jobs
+    /// Enable: diagnostics, update check, basic UI
+    fun enterSafeMode()
+}
+
+sealed interface UpdateResult {
+    data class Available(val manifest: UpdateManifest) : UpdateResult
+    data object UpToDate : UpdateResult
+    data class Error(val reason: String) : UpdateResult
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-offline">13. OfflineManager <span class="lang-tag">Rust + Kotlin</span></h3>
+
+<pre><code class="language-rust">/// Inference endpoint availability
+enum InferenceStatus {
+    Available { latency_ms: u32 },
+    Degraded { latency_ms: u32, error_rate: f32 },
+    Unavailable { since: DateTime&lt;Utc&gt;, last_error: String },
+}
+
+/// What works in each connectivity state (§67)
+struct CapabilityAvailability {
+    capture: bool,                  // always true
+    local_memory: bool,             // always true
+    lexical_recall: bool,           // always true
+    cached_calendar: bool,          // true if recently synced
+    deterministic_automations: bool,// always true
+    work_state: bool,               // always true
+    activity_ledger: bool,          // always true
+    deliberative_conversation: bool,// requires inference
+    brain_reflection: bool,         // requires inference
+    skill_compilation: bool,        // requires inference
+    research: bool,                 // requires inference + network
+    vlm_reasoning: bool,            // requires inference
+}
+
+impl CapabilityAvailability {
+    fn from_status(status: &amp;InferenceStatus) -&gt; Self {
+        let inference_ok = matches!(status, InferenceStatus::Available { .. });
+        Self {
+            capture: true,
+            local_memory: true,
+            lexical_recall: true,
+            cached_calendar: true,
+            deterministic_automations: true,
+            work_state: true,
+            activity_ledger: true,
+            deliberative_conversation: inference_ok,
+            brain_reflection: inference_ok,
+            skill_compilation: inference_ok,
+            research: inference_ok, // also needs general network
+            vlm_reasoning: inference_ok,
+        }
+    }
+}
+
+/// Deferred work queue — persists jobs for when inference returns
+struct DeferredQueue {
+    jobs: Vec&lt;DeferredReasoningJob&gt;,
+}
+
+impl DeferredQueue {
+    fn enqueue(&amp;mut self, job: DeferredReasoningJob);
+    /// Process all relevant jobs when inference returns
+    fn drain_ready(&amp;mut self) -&gt; Vec&lt;DeferredReasoningJob&gt;;
+}</code></pre>
+
+<pre><code class="language-kotlin">/// Kotlin-side connectivity monitoring
+class ConnectivityMonitor(context: Context) {
+    val networkStatus: StateFlow&lt;NetworkStatus&gt;
+    val inferenceStatus: StateFlow&lt;InferenceStatus&gt;
+
+    // Register ConnectivityManager.NetworkCallback
+    // Periodically ping inference endpoint (every 30s when degraded)
+    // Update Rust-side InferenceStatus via FFI
+}
+
+/// Degraded state UI indicator
+@Composable
+fun DegradedBanner(availability: CapabilityAvailability) {
+    if (!availability.deliberative_conversation) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer) {
+            Row {
+                Icon(Icons.Default.CloudOff)
+                Text("Offline — capture and memory available, conversation paused")
+            }
+        }
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-acceptance">P1 Acceptance Criteria</h3>
+
+<ol class="acceptance-criteria">
+  <li><strong>Voice end-to-end:</strong> User activates mic → speaks query → STT transcribes → Pi agent processes → streamed response → TTS plays answer. Measured latency from speech-end to first TTS audio &lt; 3s on company network.</li>
+  <li><strong>Barge-in:</strong> During TTS playback, user speaks → TTS stops within 200ms → new utterance captured → Pi receives steer event → new response streams.</li>
+  <li><strong>Notification classification:</strong> Notification from user-designated important contact → classified as minimum NOTIFY regardless of app-declared priority. Routine CI bot notification → capped at configured ceiling.</li>
+  <li><strong>Calendar mutation flow:</strong> Voice command "Move my dentist to Thursday" → ActionIntent(calendar.update) → SecurityKernel authorizes (lease or user confirm) → calendar updated → ActionReceipt → visible in ActivityLedger with undo button.</li>
+  <li><strong>Share sheet capture:</strong> User shares text/URL/image from any app → ShareActivity receives → Observation created with RetentionClass.Experience → available in memory recall.</li>
+  <li><strong>Delegation cycle:</strong> WorkItem created → assigned to Leaf agent → agent completes within budget → result stored → status transitions to Review → user reviews → marked Done.</li>
+  <li><strong>Proactive conflict detection:</strong> Two calendar events overlap → ProactiveEngine detects via CalendarService.conflicts() → user notified with suggested resolution.</li>
+  <li><strong>APK update verification:</strong> New release on GitLab → UpdateManager fetches manifest → verifies Ed25519 signature → downloads APK → verifies SHA-256 → verifies APK signing cert → prompts user to install. Tampered manifest or APK → rejected with clear error.</li>
+  <li><strong>Offline graceful degradation:</strong> Network disconnects → UI shows degraded banner within 5s → captures continue → memory writes continue → conversation shows "offline" → network returns → DeferredQueue drains → banner clears.</li>
+  <li><strong>Background reliability:</strong> BackgroundReliabilityManager schedules probe → measures actual vs expected execution time → classifies device health → health reported in TrustCenter → if SeverelyRestricted, user guided to battery optimization settings.</li>
+  <li><strong>Security denial:</strong> Agent proposes action with unknown capability → SecurityKernel returns Denied(UnknownCapability) → no side effect occurs → AuditEntry recorded → user not disturbed.</li>
+  <li><strong>Lease lifecycle:</strong> User grants 1-hour calendar.update lease → executions succeed → lease expires → next calendar.update requires fresh approval → confirmed via AuditEntry timestamps.</li>
+  <li><strong>Daily soak test:</strong> 8 hours of mixed use (voice, text, background, notifications) → battery drain attributable to Waywiser &lt; 15% → zero ANR → zero crash → memory stable (no leak trend in heap profiling).</li>
+  <li><strong>Process death recovery:</strong> Kill Waywiser process during active voice session → user relaunches → app recovers session from SQLite → shows last conversation state → can resume interaction without data loss.</li>
+  <li><strong>Safe mode:</strong> Simulate 3 consecutive startup crashes → app enters safe mode → disables agent runtime, Accessibility, voice, background → update check works → diagnostics accessible → user can exit safe mode.</li>
+</ol>
+
+</div>
+<div class="phase-section" id="phase-p2">
+
+<h2>P2: Intelligence <span class="phase-badge">Months 9&ndash;14</span></h2>
+
+<div class="phase-meta">
+  <p><strong>Scope:</strong> Richer context, smarter assistant &mdash; blueprint &sect;79 V2 Intelligence</p>
+  <p><strong>Entry criteria:</strong> P1 complete; PA is in daily internal use; work graph, delegation, and proactive engine operational</p>
+  <p><strong>Exit criteria:</strong> Context-aware, learning, proactively intelligent assistant with edge inference and semantic memory</p>
+  <p><strong>Team:</strong> 4 senior engineers, ~4&ndash;6 months</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>1. ContextGraph <span class="crate-tag">waywiser-context</span></h3>
+
+<p>Structured ephemeral working memory of device state. Blueprint &sect;&sect;12&ndash;13. Android callbacks enter an observation bus; deterministic reducers update typed graph nodes. The graph is <em>not</em> permanent history.</p>
+
+<h4>Core types</h4>
+
+<pre><code class="language-rust">/// A single domain node in the context graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContextDomain {
+    User(UserContext),
+    Device(DeviceContext),
+    Environment(EnvironmentContext),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserContext {
+    pub activity: Option&lt;ActivityState&gt;,       // walking, driving, stationary, …
+    pub audio_route: Option&lt;AudioRoute&gt;,       // speaker, headphones, bluetooth, …
+    pub place_context: Option&lt;PlaceContext&gt;,    // home, office, commute, unknown
+    pub next_event: Option&lt;UpcomingEvent&gt;,
+    pub attention_state: Option&lt;AttentionState&gt;, // idle, focused, dnd
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceContext {
+    pub battery_pct: u8,
+    pub charging: bool,
+    pub network: NetworkState,     // wifi, cellular, offline
+    pub thermal: ThermalState,     // nominal, elevated, throttling, critical
+    pub screen: ScreenState,      // on, off, locked
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentContext {
+    pub time_of_day: TimeOfDay,   // morning, afternoon, evening, night
+    pub ambient_noise: Option&lt;NoiseLevel&gt;,
+    pub weather: Option&lt;WeatherSummary&gt;,
+}
+
+/// Typed wrapper around a ContextDomain node with metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextNode {
+    pub domain: ContextDomain,
+    pub updated_at: DateTime&lt;Utc&gt;,
+    pub expires_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub source: ObservationSource,
+}
+
+/// The full graph: a flat map of domain nodes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextGraph {
+    nodes: HashMap&lt;ContextDomainKey, ContextNode&gt;,
+}
+
+/// Immutable snapshot for projection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextGraphSnapshot {
+    pub nodes: Vec&lt;ContextNode&gt;,
+    pub captured_at: DateTime&lt;Utc&gt;,
+}
+</code></pre>
+
+<h4>Observation bus &amp; reducers</h4>
+
+<pre><code class="language-rust">/// Receives observations from the Android layer via FFI.
+pub struct ObservationBus {
+    subscribers: Vec&lt;Box&lt;dyn DeterministicReducer&gt;&gt;,
+}
+
+impl ObservationBus {
+    /// Dispatch an observation to all registered reducers.
+    pub fn publish(&amp;self, obs: &amp;Observation, graph: &amp;mut ContextGraph) {
+        for reducer in &amp;self.subscribers {
+            reducer.reduce(obs, graph);
+        }
+    }
+}
+
+/// Deterministic reducer: pure function from observation to graph mutation.
+/// No LLM calls. No network. No side effects.
+pub trait DeterministicReducer: Send + Sync {
+    /// Which observation kinds this reducer handles.
+    fn handles(&amp;self) -&gt; &amp;[ObservationKind];
+
+    /// Apply the observation to the graph. Must be deterministic and fast.
+    fn reduce(&amp;self, obs: &amp;Observation, graph: &amp;mut ContextGraph);
+}
+</code></pre>
+
+<h4>Flow</h4>
+<pre><code>Android callback (Kotlin)
+    │
+    ▼
+Observation constructed (via FFI)
+    │
+    ▼
+ObservationBus.publish()
+    │
+    ▼
+DeterministicReducer.reduce()  ← one per domain
+    │
+    ▼
+ContextGraph updated (in-memory)
+    │
+    ▼
+Temporal decay task expires stale nodes
+</code></pre>
+
+<h4>Temporal decay</h4>
+
+<div class="spec-table">
+<table>
+  <thead><tr><th>Domain</th><th>Default TTL</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>User.activity</td><td>5 min</td><td>"walking" expires if no update</td></tr>
+    <tr><td>User.next_event</td><td>Until event passes</td><td>Removed after event time</td></tr>
+    <tr><td>Device.battery_pct</td><td>10 min</td><td>Refreshed by periodic poll</td></tr>
+    <tr><td>Device.thermal</td><td>2 min</td><td>Fast decay for transient spikes</td></tr>
+    <tr><td>Environment.weather</td><td>30 min</td><td>Infrequent update acceptable</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Testing</h4>
+<ul>
+  <li>Unit: feed known observations, assert graph state matches expected snapshot</li>
+  <li>Property: reducers are idempotent — same observation twice = same graph state</li>
+  <li>Decay: advance time, assert expired nodes removed</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>2. AttentionGovernor <span class="crate-tag">waywiser-attention</span></h3>
+
+<p>Deterministic policy engine deciding whether information should affect user attention. Blueprint &sect;&sect;14&ndash;14.3. Neural hints may escalate but <strong>cannot suppress</strong>.</p>
+
+<h4>Decision enum (shared type, defined in P0)</h4>
+<pre><code class="language-rust">// Already defined in shared foundations:
+// pub enum AttentionDecision { Drop, Batch, Silent, Notify, HeadsUp, Voice, Urgent }
+</code></pre>
+
+<h4>Policy types</h4>
+<pre><code class="language-rust">/// Per-source attention rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttentionRule {
+    pub source: AttentionSource,
+    pub floor: Option&lt;AttentionDecision&gt;,    // minimum attention level
+    pub ceiling: Option&lt;AttentionDecision&gt;,  // maximum attention level
+    pub priority: u8,                        // rule precedence (lower = higher)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AttentionSource {
+    Contact(ContactId),
+    ContactGroup(ContactGroupId),  // "family", "vip"
+    AppChannel { package: String, channel_id: String },
+    AppPackage(String),
+    NotificationCategory(String),
+    SystemChannel(SystemChannel),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemChannel {
+    AlarmClock,
+    IncomingCall,
+    SecurityAlert,
+    DeviceWarning,
+}
+
+/// Hint from edge model — advisory only, cannot lower floor.
+#[derive(Debug, Clone)]
+pub struct EdgeHint {
+    pub suggested: AttentionDecision,
+    pub confidence: f32,          // 0.0–1.0
+    pub reasoning: Option&lt;String&gt;, // structured rationale
+}
+
+/// Full attention policy configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttentionPolicy {
+    pub rules: Vec&lt;AttentionRule&gt;,
+    pub default_decision: AttentionDecision,
+    pub suppression_threshold: f32, // min edge confidence to suppress (high)
+    pub escalation_threshold: f32,  // min edge confidence to escalate (low)
+}
+</code></pre>
+
+<h4>Governor</h4>
+<pre><code class="language-rust">pub struct AttentionGovernor {
+    policy: AttentionPolicy,
+}
+
+impl AttentionGovernor {
+    /// Evaluate attention for a signal.
+    /// Pipeline: floor → ceiling → deterministic match → edge hint → final.
+    pub fn evaluate(
+        &amp;self,
+        signal: &amp;AttentionSignal,
+        edge_hint: Option&lt;&amp;EdgeHint&gt;,
+        context: &amp;ContextGraphSnapshot,
+    ) -&gt; AttentionResult {
+        // 1. Find matching floor (strongest wins)
+        let floor = self.resolve_floor(signal);
+
+        // 2. Find matching ceiling
+        let ceiling = self.resolve_ceiling(signal);
+
+        // 3. Deterministic pattern match → base decision
+        let base = self.deterministic_classify(signal, context);
+
+        // 4. Apply edge hint (ONLY escalation; suppression requires
+        //    confidence > suppression_threshold AND no floor violation)
+        let adjusted = match edge_hint {
+            Some(hint) =&gt; self.apply_hint(base, hint, floor),
+            None =&gt; base,
+        };
+
+        // 5. Clamp to [floor, ceiling]
+        let final_decision = self.clamp(adjusted, floor, ceiling);
+
+        AttentionResult {
+            decision: final_decision,
+            floor_applied: floor,
+            ceiling_applied: ceiling,
+            edge_hint_effect: edge_hint.map(|h| h.suggested),
+            source_rule: self.matched_rule(signal),
+        }
+    }
+
+    /// Suppression asymmetry: escalation easier than suppression.
+    fn apply_hint(
+        &amp;self,
+        base: AttentionDecision,
+        hint: &amp;EdgeHint,
+        floor: Option&lt;AttentionDecision&gt;,
+    ) -&gt; AttentionDecision {
+        if hint.suggested &gt; base {
+            // Escalation: lower confidence threshold
+            if hint.confidence &gt;= self.policy.escalation_threshold {
+                hint.suggested
+            } else {
+                base
+            }
+        } else if hint.suggested &lt; base {
+            // Suppression: higher confidence threshold + floor check
+            if hint.confidence &gt;= self.policy.suppression_threshold {
+                // NEVER suppress below floor
+                match floor {
+                    Some(f) if hint.suggested &lt; f =&gt; f,
+                    _ =&gt; hint.suggested,
+                }
+            } else {
+                base // insufficient confidence to suppress
+            }
+        } else {
+            base
+        }
+    }
+}
+
+pub struct AttentionResult {
+    pub decision: AttentionDecision,
+    pub floor_applied: Option&lt;AttentionDecision&gt;,
+    pub ceiling_applied: Option&lt;AttentionDecision&gt;,
+    pub edge_hint_effect: Option&lt;AttentionDecision&gt;,
+    pub source_rule: Option&lt;AttentionRule&gt;,
+}
+</code></pre>
+
+<h4>High-consequence floors (hardcoded, not configurable)</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Source</th><th>Minimum</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>User-designated important contacts</td><td>Notify</td><td>Explicit user preference</td></tr>
+    <tr><td>Known family contacts</td><td>Notify</td><td>Safety</td></tr>
+    <tr><td>Android alarm channels</td><td>HeadsUp</td><td>User-set alarms are intentional</td></tr>
+    <tr><td>Repeated incoming calls (3+ in 5 min)</td><td>Urgent</td><td>Emergency pattern</td></tr>
+    <tr><td>Security/system alerts</td><td>Notify</td><td>Device safety</td></tr>
+    <tr><td>Deadlines (&lt; 15 min)</td><td>HeadsUp</td><td>Time-critical</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Testing</h4>
+<ul>
+  <li>Unit: for each floor source, verify edge hint with <code>Drop</code> cannot suppress below floor</li>
+  <li>Property: <code>evaluate()</code> output &ge; floor, &le; ceiling for every input</li>
+  <li>Escalation: edge hint escalates at low confidence threshold; suppression requires high threshold</li>
+  <li>Fuzz: random signals + random hints never produce decision below any matched floor</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>3. EdgeAccelerator <span class="crate-tag">Kotlin: waywiser-edge</span></h3>
+
+<p>Optional on-device inference for bounded utility tasks. Blueprint &sect;&sect;51&ndash;56. Research correction: <strong>Gemma 4 E2B via LiteRT-LM</strong>, not llama.cpp/Vulkan (Mali driver instability on Exynos).</p>
+
+<h4>Kotlin interface</h4>
+<pre><code class="language-kotlin">enum class ResidencyState { COLD, WARM, HOT }
+
+data class EdgeInferenceResult(
+    val output: String,
+    val structuredOutput: JsonObject?,  // parsed JSON if constrained decoding
+    val latencyMs: Long,
+    val tokensGenerated: Int,
+)
+
+interface EdgeModelManager {
+    val residencyState: StateFlow&lt;ResidencyState&gt;
+
+    /** Load model into memory. COLD → WARM → HOT. */
+    suspend fun warmUp()
+
+    /** Unload model. HOT/WARM → COLD. */
+    suspend fun unload()
+
+    /** Run bounded inference with constrained structured output. */
+    suspend fun infer(
+        prompt: String,
+        schema: JsonSchema?,           // constrained decoding schema
+        maxTokens: Int = 256,
+    ): EdgeInferenceResult
+
+    /** Current memory usage in bytes. */
+    fun memoryUsageBytes(): Long
+}
+
+/** Lifecycle-aware residency policy. */
+class EdgeResidencyPolicy(
+    private val manager: EdgeModelManager,
+    private val contextGraph: ContextGraphBridge,  // FFI to Rust
+) {
+    fun onForegroundConversation()  { manager.warmUp() }
+    fun onCameraSessionStart()     { manager.warmUp() }
+    fun onScreenOff()              { scheduleUnload(gracePeriodMs = 60_000) }
+    fun onThermalThrottle()        { manager.unload() }
+    fun onMemoryPressure()         { manager.unload() /* immediate */ }
+    fun onTrimMemory(level: Int) {
+        if (level >= TRIM_MEMORY_RUNNING_LOW) manager.unload()
+    }
+}
+</code></pre>
+
+<h4>Model configuration</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Model</th><th>Role</th><th>Params</th><th>Memory</th><th>Speed</th><th>Runtime</th></tr></thead>
+  <tbody>
+    <tr><td>Gemma 4 E2B</td><td>Primary utility</td><td>2.3B eff.</td><td>676 MB peak</td><td>~40 tok/s (S21+ GPU)</td><td>LiteRT-LM (OpenCL)</td></tr>
+    <tr><td>FunctionGemma 270M</td><td>Lightweight router</td><td>270M</td><td>~350 MB</td><td>~126 tok/s (CPU)</td><td>LiteRT</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Invariant enforcement (I6)</h4>
+<ul>
+  <li>Edge model output is typed as <code>EdgeHint</code> &mdash; never <code>AgentMessage</code></li>
+  <li>No <code>ActionIntent</code> can originate from edge inference alone</li>
+  <li>Edge model cannot call <code>PermissionService</code> or <code>CapabilityRegistry</code></li>
+  <li>Edge-produced classifications carry <code>Provenance::EdgeModel</code> &mdash; deterministic code decides ceiling</li>
+</ul>
+
+<h4>Memory budget (S21+, 8 GB)</h4>
+<pre><code>Android OS + framework:      ~3.0 GB
+Waywiser main app (Kotlin):  ~0.5 GB
+Rust runtime + SQLite:       ~0.3 GB
+Edge model (Gemma 4 E2B):   ~0.7 GB
+────────────────────────────────────
+Total:                       ~4.5 GB
+Remaining for buffers/apps:  ~3.5 GB
+</code></pre>
+
+<h4>Testing</h4>
+<ul>
+  <li>Instrumented: cold-load &lt; 2 s on S21+</li>
+  <li>Instrumented: classification latency &lt; 200 ms warm</li>
+  <li>Soak (24 h): COLD/WARM/HOT transitions stable, no leaked memory, no thermal throttle</li>
+  <li>Memory pressure simulation: model unloads cleanly, no crash, app continues without edge</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>4. CameraSystem <span class="crate-tag">Kotlin + Rust</span></h3>
+
+<p>Camera perception pipeline: CameraX &rarr; cheap frame selection &rarr; local OCR/CV &rarr; VisualScene &rarr; selective Qwen vision. Blueprint &sect;&sect;60&ndash;61.</p>
+
+<h4>Kotlin layer</h4>
+<pre><code class="language-kotlin">/** Cheap frame-change detector. Runs per-preview-frame. */
+class FrameSelector(private val diffThreshold: Float = 0.15f) {
+    /** Returns true if frame is "interesting" enough to process. */
+    fun shouldProcess(frame: ImageProxy, previous: ImageProxy?): Boolean
+}
+
+/** Local on-device processors — no network, no LLM. */
+class LocalVisionProcessor(
+    private val ocrEngine: TextRecognizer,       // ML Kit
+    private val barcodeScanner: BarcodeScanner,   // ML Kit
+) {
+    suspend fun process(frame: ImageProxy): LocalVisionResult
+}
+
+data class LocalVisionResult(
+    val textBlocks: List&lt;TextBlock&gt;,
+    val barcodes: List&lt;Barcode&gt;,
+    val dominantObjects: List&lt;DetectedObject&gt;,
+)
+</code></pre>
+
+<h4>VisualScene (Rust)</h4>
+<pre><code class="language-rust">/// Working memory of the current visual scene.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualScene {
+    pub objects: Vec&lt;DetectedObject&gt;,
+    pub visible_text: Vec&lt;TextBlock&gt;,
+    pub active_object: Option&lt;ObjectId&gt;,
+    pub relationships: Vec&lt;ObjectRelationship&gt;,
+    pub last_change: DateTime&lt;Utc&gt;,
+    pub confidence: f32,
+    pub source: VisionSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectedObject {
+    pub id: ObjectId,
+    pub label: String,
+    pub confidence: f32,
+    pub bounding_box: Option&lt;BoundingBox&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextBlock {
+    pub text: String,
+    pub language: Option&lt;String&gt;,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum VisionSource {
+    LocalOcr,
+    LocalCv,
+    QwenVision { prompt_tokens: u32, model_id: String },
+}
+</code></pre>
+
+<h4>Selective Qwen vision decision</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Trigger</th><th>Send to Qwen?</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>User asks &ldquo;what&rsquo;s this?&rdquo;</td><td>Yes</td><td>Explicit request</td></tr>
+    <tr><td>Local CV low confidence (&lt; 0.3)</td><td>Yes, if user in active session</td><td>Fallback</td></tr>
+    <tr><td>Scene changed &gt; 60% since last query</td><td>Yes, if follow-up context needed</td><td>Continuity</td></tr>
+    <tr><td>Routine idle frame</td><td>No</td><td>Do not send every frame to server</td></tr>
+    <tr><td>Screen off / background</td><td>No</td><td>Privacy + battery</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Privacy invariant</h4>
+<ul>
+  <li>Raw frames: ephemeral unless user explicitly captures/persists</li>
+  <li>No continuous background capture</li>
+  <li>VisualScene belongs to working memory (ephemeral retention)</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>5. BrainReflection <span class="crate-tag">waywiser-brain (extended)</span></h3>
+
+<p>Full reflective learning pipeline. Blueprint &sect;&sect;28&ndash;32. Extends P0&rsquo;s deterministic Pass 1 with deferred model-driven reflection.</p>
+
+<h4>Extensions to P0 types</h4>
+<pre><code class="language-rust">/// P2 extends ExperienceRecord with reflection state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectionState {
+    pub pass1_completed: bool,
+    pub pass1_signals: Vec&lt;DurableSignal&gt;,
+    pub pass2_scheduled: bool,
+    pub pass2_completed_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub candidates: Vec&lt;MemoryCandidate&gt;,
+}
+
+/// A candidate memory or procedure extracted by Pass 2 reflection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryCandidate {
+    pub id: Uuid,
+    pub kind: CandidateKind,
+    pub content: String,
+    pub source_experiences: Vec&lt;ExperienceId&gt;,
+    pub model_confidence: f32,
+    /// Deterministic code assigns the actual ceiling.
+    pub assigned_confidence: f32,
+    pub provenance: Provenance,
+    pub validation_status: ValidationStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CandidateKind {
+    PersonalMemory,
+    Procedure(ProcedurePattern),
+    Correction,     // user explicitly corrected a belief
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcedurePattern {
+    pub trigger: String,   // WHEN X
+    pub action: String,    // DO Y / AVOID Z / PREFER W
+    pub evidence_count: u32,
+    pub maturity: ProcedureMaturity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProcedureMaturity {
+    Observed,       // seen once
+    Recurring,      // seen 2-3 times
+    Established,    // 4+ occurrences, ready for skill compilation
+}
+</code></pre>
+
+<h4>Reflection pipeline</h4>
+<pre><code class="language-rust">pub trait BrainReflector: Send + Sync {
+    /// Pass 1: deterministic signal extraction. Runs immediately.
+    fn pass1_extract(&amp;self, experience: &amp;ExperienceRecord) -&gt; Vec&lt;DurableSignal&gt;;
+
+    /// Pass 2: model-driven reflection. Runs deferred (P3 priority).
+    /// Returns candidate memories/procedures for validation.
+    async fn pass2_reflect(
+        &amp;self,
+        experience: &amp;ExperienceRecord,
+        signals: &amp;[DurableSignal],
+        existing_memories: &amp;[MemoryRecord],
+        existing_procedures: &amp;[ProcedureRecord],
+    ) -&gt; Result&lt;Vec&lt;MemoryCandidate&gt;, BrainError&gt;;
+
+    /// Deterministic validation of model-proposed candidates.
+    fn validate_candidate(&amp;self, candidate: &amp;MemoryCandidate) -&gt; ValidationResult;
+
+    /// Periodic consolidation: merge related memories/procedures.
+    async fn consolidate(
+        &amp;self,
+        memories: &amp;[MemoryRecord],
+        procedures: &amp;[ProcedureRecord],
+    ) -&gt; Result&lt;ConsolidationResult, BrainError&gt;;
+}
+
+pub enum ValidationResult {
+    Accept { adjusted_confidence: f32 },
+    Reject { reason: String },
+    NeedsMoreEvidence { current: u32, required: u32 },
+}
+</code></pre>
+
+<h4>Scheduling &amp; preemption</h4>
+<pre><code>Experience persisted (immediate)
+    │
+    ▼
+Pass 1 deterministic (immediate, sync)
+    │
+    ├─ no durable signal → stop
+    │
+    ▼
+Schedule Pass 2 reflection job (P3 priority)
+    │
+    ▼
+BackgroundScheduler picks up when idle
+    │
+    ├─ P0 interactive request arrives → CANCEL reflection, retry later
+    │
+    ▼
+Pass 2 reflection (async, Qwen)
+    │
+    ▼
+Deterministic validation
+    │
+    ├─ Accept → persist as MemoryRecord / ProcedureRecord
+    ├─ Reject → discard with audit log
+    └─ NeedsMoreEvidence → mark, wait for more occurrences
+</code></pre>
+
+<h4>Confidence ceiling enforcement</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Source</th><th>Max confidence</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>Single model inference</td><td>0.5</td><td>One clever answer ≠ knowledge</td></tr>
+    <tr><td>User explicit statement</td><td>0.9</td><td>High trust, not absolute (user can misremember)</td></tr>
+    <tr><td>User correction</td><td>0.95</td><td>Deliberate correction &gt; casual statement</td></tr>
+    <tr><td>Repeated observation (3+)</td><td>0.7</td><td>Pattern emerging</td></tr>
+    <tr><td>Verified external data</td><td>0.85</td><td>Calendar entry, API response</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Testing</h4>
+<ul>
+  <li>Unit: Pass 1 extracts expected signals from fixture experiences</li>
+  <li>Integration: full pipeline from experience to persisted memory record</li>
+  <li>Preemption: reflection job cancels within 500 ms when interactive request arrives</li>
+  <li>Maturity: procedure with 1 observation = <code>Observed</code>; 4+ = <code>Established</code></li>
+  <li>Ceiling: model-proposed confidence capped to source-determined ceiling</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>6. SemanticMemory <span class="crate-tag">waywiser-memory (extended)</span></h3>
+
+<p>Extends P0 lexical recall with BGE-M3 embeddings and vector search. Blueprint &sect;&sect;48&ndash;50.</p>
+
+<h4>New traits</h4>
+<pre><code class="language-rust">/// Embedding generation abstraction.
+pub trait EmbeddingProvider: Send + Sync {
+    fn model_id(&amp;self) -&gt; &amp;str;
+    fn dimension(&amp;self) -&gt; usize;
+    async fn embed(&amp;self, text: &amp;str) -&gt; Result&lt;Vec&lt;f32&gt;, EmbeddingError&gt;;
+    async fn embed_batch(&amp;self, texts: &amp;[&amp;str]) -&gt; Result&lt;Vec&lt;Vec&lt;f32&gt;&gt;, EmbeddingError&gt;;
+}
+
+/// Vector storage and search abstraction.
+pub trait VectorIndex: Send + Sync {
+    async fn upsert(&amp;self, entries: &amp;[VectorEntry]) -&gt; Result&lt;(), VectorError&gt;;
+    async fn remove(&amp;self, ids: &amp;[Uuid]) -&gt; Result&lt;(), VectorError&gt;;
+    async fn search(
+        &amp;self,
+        query_vector: &amp;[f32],
+        limit: usize,
+        filter: Option&lt;&amp;VectorFilter&gt;,
+    ) -&gt; Result&lt;Vec&lt;VectorMatch&gt;, VectorError&gt;;
+}
+
+/// Every stored vector carries provenance metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VectorEntry {
+    pub id: Uuid,
+    pub vector: Vec&lt;f32&gt;,
+    pub embedding_model_id: String,
+    pub model_version: String,
+    pub dimension: usize,
+    pub source_revision: u64,
+    pub created_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone)]
+pub struct VectorMatch {
+    pub id: Uuid,
+    pub score: f32,     // cosine similarity
+    pub entry: VectorEntry,
+}
+</code></pre>
+
+<h4>Hybrid recall</h4>
+<pre><code class="language-rust">/// Combines lexical (FTS5) and semantic (vector) recall.
+pub struct HybridRecallEngine {
+    lexical: LexicalIndex,       // from P0
+    semantic: Box&lt;dyn VectorIndex&gt;,
+    embedder: Box&lt;dyn EmbeddingProvider&gt;,
+}
+
+impl HybridRecallEngine {
+    pub async fn recall(
+        &amp;self,
+        query: &amp;str,
+        scope: &amp;RecallScope,
+        limit: usize,
+    ) -&gt; Result&lt;Vec&lt;RecallResult&gt;, MemoryError&gt; {
+        // Run both in parallel
+        let (lexical, semantic) = tokio::join!(
+            self.lexical.search(query, scope, limit),
+            self.semantic_search(query, scope, limit),
+        );
+
+        // Merge and rank by combined score
+        // Weights: lexical_score * 0.3 + semantic_score * 0.3
+        //        + recency * 0.15 + usage * 0.1 + confidence * 0.15
+        self.merge_and_rank(lexical?, semantic?, limit)
+    }
+
+    /// Fail-soft: if embeddings unavailable, return lexical-only results.
+    async fn semantic_search(
+        &amp;self, query: &amp;str, scope: &amp;RecallScope, limit: usize,
+    ) -&gt; Result&lt;Vec&lt;RecallResult&gt;, MemoryError&gt; {
+        match self.embedder.embed(query).await {
+            Ok(vec) =&gt; { /* vector search */ }
+            Err(_) =&gt; Ok(vec![]),  // fail-soft: no semantic results
+        }
+    }
+}
+</code></pre>
+
+<h4>Vector migration protocol (blueprint &sect;50)</h4>
+<pre><code>1. Old index continues serving all queries
+2. New index builds independently (background, P4 priority)
+3. Validate: new index covers all entries, quality spot-check
+4. Atomic switch: swap search target
+5. Retire old index after grace period
+</code></pre>
+<ul>
+  <li><strong>Invariant:</strong> incompatible embedding spaces are NEVER mixed in a single search</li>
+  <li>Each <code>VectorEntry</code> carries <code>embedding_model_id</code> &mdash; entries from different models cannot co-exist in one index</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>7. SkillEvolution <span class="crate-tag">waywiser-skills (extended)</span></h3>
+
+<p>Skill compilation, evaluation, and promotion. Blueprint &sect;&sect;32&ndash;33. Extends P0 skill loading with evolution pipeline.</p>
+
+<h4>Evolution pipeline types</h4>
+<pre><code class="language-rust">/// Compiles a mature procedure into a candidate skill.
+pub trait SkillCompiler: Send + Sync {
+    async fn compile(
+        &amp;self,
+        procedure: &amp;ProcedureRecord,
+        evidence: &amp;[ExperienceRecord],
+    ) -&gt; Result&lt;SkillCandidate, SkillError&gt;;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillCandidate {
+    pub id: Uuid,
+    pub name: String,
+    pub compiled_from: ProcedureId,
+    pub skill_md: String,           // generated SKILL.md content
+    pub manifest: SkillManifest,
+    pub compiled_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillManifest {
+    pub required_capabilities: Vec&lt;CapabilityName&gt;,
+    pub risk_level: RiskLevel,
+    pub evaluation_fixtures: Vec&lt;EvalFixturePath&gt;,
+}
+
+/// Validates skill candidates against invariant I10.
+pub struct SkillValidator;
+
+impl SkillValidator {
+    pub fn validate(&amp;self, candidate: &amp;SkillCandidate) -&gt; SkillValidationResult {
+        let mut violations = vec![];
+
+        // I10 checks:
+        if self.modifies_security_kernel(candidate) {
+            violations.push("Attempts to modify security kernel");
+        }
+        if self.grants_capabilities(candidate) {
+            violations.push("Attempts to grant new capabilities");
+        }
+        if self.lowers_risk(candidate) {
+            violations.push("Attempts to lower action risk");
+        }
+        if self.overwrites_provenance(candidate) {
+            violations.push("Attempts to overwrite provenance rules");
+        }
+        if self.alters_soul(candidate) {
+            violations.push("Attempts to alter SOUL governance");
+        }
+
+        if violations.is_empty() {
+            SkillValidationResult::Valid
+        } else {
+            SkillValidationResult::Invalid(violations)
+        }
+    }
+}
+
+/// Evaluates candidate against baseline on fixtures.
+pub trait EvaluationRunner: Send + Sync {
+    async fn evaluate(
+        &amp;self,
+        candidate: &amp;SkillCandidate,
+        baseline: Option&lt;&amp;SkillVersion&gt;,
+    ) -&gt; Result&lt;EvaluationResult, SkillError&gt;;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluationResult {
+    pub passed: bool,
+    pub score: f32,
+    pub baseline_score: Option&lt;f32&gt;,
+    pub fixture_results: Vec&lt;FixtureResult&gt;,
+    pub evaluated_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillVersion {
+    pub id: Uuid,
+    pub skill_id: Uuid,
+    pub version: u32,
+    pub compiled_from: ProcedureId,
+    pub evaluation: EvaluationResult,
+    pub promoted_at: DateTime&lt;Utc&gt;,
+    pub status: SkillVersionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SkillVersionStatus {
+    Candidate,
+    Active,
+    Retired,
+}
+</code></pre>
+
+<h4>Promotion rules</h4>
+<ul>
+  <li>Promotion occurs ONLY at safe boundaries: between sessions, during startup, never mid-turn</li>
+  <li>A running session&rsquo;s skill set is frozen at session start</li>
+  <li>If evaluation fails (score &lt; baseline), candidate is rejected with audit log</li>
+  <li>Skill format on disk: <code>skill/SKILL.md</code> + <code>manifest.yaml</code> + <code>evals/</code> + <code>resources/</code></li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>8. ContextProjection <span class="crate-tag">waywiser-context (submodule)</span></h3>
+
+<p>The model never receives the complete context graph. Blueprint &sect;13.</p>
+
+<pre><code class="language-rust">pub struct ProjectionEngine {
+    token_estimator: Box&lt;dyn TokenEstimator&gt;,
+}
+
+impl ProjectionEngine {
+    /// Project relevant context for the current query.
+    pub fn project(
+        &amp;self,
+        snapshot: &amp;ContextGraphSnapshot,
+        query: &amp;str,
+        task_type: TaskType,
+        budget_tokens: usize,
+    ) -&gt; ContextProjection {
+        // 1. Score each node for relevance to query + task
+        let scored: Vec&lt;(f32, &amp;ContextNode)&gt; = snapshot.nodes.iter()
+            .map(|n| (self.relevance_score(n, query, task_type), n))
+            .collect();
+
+        // 2. Sort by score descending
+        // 3. Greedily include nodes until budget exhausted
+        // 4. Summarize verbose nodes to fit budget
+
+        let mut projection = ContextProjection::new();
+        let mut tokens_used = 0;
+        for (score, node) in scored {
+            let node_tokens = self.token_estimator.estimate(node);
+            if tokens_used + node_tokens &gt; budget_tokens {
+                // Try summarizing
+                if let Some(summary) = self.summarize(node) {
+                    let summary_tokens = self.token_estimator.estimate_str(&amp;summary);
+                    if tokens_used + summary_tokens &lt;= budget_tokens {
+                        projection.add_summary(summary, score);
+                        tokens_used += summary_tokens;
+                    }
+                }
+                continue;
+            }
+            projection.add_node(node.clone(), score);
+            tokens_used += node_tokens;
+        }
+
+        projection.tokens_used = tokens_used;
+        projection
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ContextProjection {
+    pub nodes: Vec&lt;ProjectedNode&gt;,
+    pub summaries: Vec&lt;ProjectedSummary&gt;,
+    pub tokens_used: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum TaskType {
+    SimpleChat,           // budget: ~2K tokens
+    ToolCall,             // budget: ~4K tokens
+    Research,             // budget: ~16K tokens
+    BrainReflection,      // budget: ~8K tokens
+}
+</code></pre>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>9. ReasoningQueue <span class="crate-tag">waywiser-proactive (extended)</span></h3>
+
+<p>Durable deferred reasoning jobs. Blueprint &sect;66. Extends P1&rsquo;s basic <code>DeferredReasoningJob</code> with persistence, relevance checks, and coalescing.</p>
+
+<h4>Extended type</h4>
+<pre><code class="language-rust">/// P2 extends the P1 DeferredReasoningJob.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningJob {
+    // -- from P1 --
+    pub id: Uuid,
+    pub cause: ReasoningCause,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub priority: InferencePriority,
+    pub context_refs: Vec&lt;ContextRef&gt;,
+
+    // -- P2 extensions --
+    pub relevance_rule: RelevanceRule,
+    pub status: ReasoningJobStatus,
+    pub attempts: u32,
+    pub last_attempt_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub coalesce_key: Option&lt;String&gt;,  // jobs with same key merge
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RelevanceRule {
+    /// Still relevant if this context node exists and matches.
+    ContextNodePresent { domain_key: ContextDomainKey, predicate: String },
+    /// Still relevant if time hasn't passed a deadline.
+    BeforeDeadline(DateTime&lt;Utc&gt;),
+    /// Always relevant (execute when capacity available).
+    Always,
+    /// Custom: evaluate via a deterministic function.
+    Custom(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ReasoningJobStatus {
+    Pending,
+    Executing,
+    Completed(serde_json::Value),
+    Expired { reason: String },
+    Failed { error: String, retryable: bool },
+}
+</code></pre>
+
+<h4>Queue manager</h4>
+<pre><code class="language-rust">pub struct ReasoningQueueManager {
+    store: Box&lt;dyn ReasoningJobStore&gt;,  // SQLite-backed, survives process death
+    context_graph: Arc&lt;RwLock&lt;ContextGraph&gt;&gt;,
+}
+
+impl ReasoningQueueManager {
+    /// Enqueue a new job, coalescing with existing if key matches.
+    pub async fn enqueue(&amp;self, job: ReasoningJob) -&gt; Result&lt;Uuid, QueueError&gt; {
+        if let Some(key) = &amp;job.coalesce_key {
+            if let Some(existing) = self.store.find_by_coalesce_key(key).await? {
+                // Merge: keep earlier job, update context_refs
+                self.store.merge_context_refs(existing.id, &amp;job.context_refs).await?;
+                return Ok(existing.id);
+            }
+        }
+        self.store.insert(&amp;job).await
+    }
+
+    /// Pick next job to execute. Checks relevance before returning.
+    pub async fn next_ready(&amp;self) -&gt; Result&lt;Option&lt;ReasoningJob&gt;, QueueError&gt; {
+        loop {
+            let candidate = self.store.next_by_priority().await?;
+            match candidate {
+                None =&gt; return Ok(None),
+                Some(job) =&gt; {
+                    if self.is_still_relevant(&amp;job).await {
+                        return Ok(Some(job));
+                    } else {
+                        self.store.mark_expired(
+                            job.id,
+                            "Cause no longer relevant in context graph",
+                        ).await?;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Semantic relevance check — not just "older than N minutes".
+    async fn is_still_relevant(&amp;self, job: &amp;ReasoningJob) -&gt; bool {
+        match &amp;job.relevance_rule {
+            RelevanceRule::Always =&gt; true,
+            RelevanceRule::BeforeDeadline(dl) =&gt; Utc::now() &lt; *dl,
+            RelevanceRule::ContextNodePresent { domain_key, .. } =&gt; {
+                let graph = self.context_graph.read().await;
+                graph.has_node(domain_key)
+            }
+            RelevanceRule::Custom(_) =&gt; true, // custom eval deferred
+        }
+    }
+}
+</code></pre>
+
+<h4>Metrics</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Metric</th><th>Target</th></tr></thead>
+  <tbody>
+    <tr><td>Queue depth (steady state)</td><td>&lt; 50 pending jobs</td></tr>
+    <tr><td>Average wait time (P3)</td><td>&lt; 30 min during active use, &lt; 5 min idle</td></tr>
+    <tr><td>Expiry rate</td><td>30&ndash;60% (expected; many signals become irrelevant)</td></tr>
+    <tr><td>Coalesce rate</td><td>&gt; 10% (similar signals merge)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>P2 Acceptance Criteria</h3>
+
+<div class="spec-table">
+<table>
+  <thead><tr><th>#</th><th>Criterion</th><th>Verification</th></tr></thead>
+  <tbody>
+    <tr><td>AC-1</td><td>Walking + headphones + upcoming meeting &rarr; ContextGraph reflects all three; projected context includes relevant subset only</td><td>Integration test with mock Android callbacks</td></tr>
+    <tr><td>AC-2</td><td>Important contact message &rarr; AttentionGovernor enforces NOTIFY floor regardless of edge model hint suggesting DROP</td><td>Unit test with fixture</td></tr>
+    <tr><td>AC-3</td><td>Edge model loads in &lt; 2 s on S21+; classifies notification in &lt; 200 ms warm</td><td>Instrumented benchmark on device</td></tr>
+    <tr><td>AC-4</td><td>Edge model unloads automatically on memory pressure; no crash; app continues without edge</td><td>Instrumented test with simulated <code>onTrimMemory</code></td></tr>
+    <tr><td>AC-5</td><td>Camera &ldquo;what&rsquo;s this?&rdquo; &rarr; local OCR + selective Qwen vision &rarr; coherent multi-turn answer</td><td>Manual test with printed text / barcode / real object</td></tr>
+    <tr><td>AC-6</td><td>Brain reflection runs during idle; produces procedure from 3+ similar experiences</td><td>Integration test: inject 4 similar experiences, verify procedure with <code>Established</code> maturity</td></tr>
+    <tr><td>AC-7</td><td>Semantic recall finds relevant memory that pure lexical search misses</td><td>Integration test: store memory with synonyms, recall by synonym</td></tr>
+    <tr><td>AC-8</td><td>Skill candidate compiled &rarr; evaluated &rarr; promoted between sessions (never mid-turn)</td><td>Integration: promote skill, verify active session unaffected, new session sees it</td></tr>
+    <tr><td>AC-9</td><td>Context projection for SimpleChat uses &lt; 2K tokens; Research uses &lt; 16K</td><td>Unit test with large context graph, verify budget enforced</td></tr>
+    <tr><td>AC-10</td><td>Reasoning queue: 50 deferred jobs; ~30 expire as irrelevant; ~20 execute when idle</td><td>Integration test: enqueue 50, manipulate context graph, verify expiry + execution</td></tr>
+    <tr><td>AC-11</td><td>Vector migration: switch embedding model with zero downtime; no mixed-space queries</td><td>Integration: build new index while old serves, swap, verify no mixed results</td></tr>
+    <tr><td>AC-12</td><td>24-hour soak: edge model COLD/WARM/HOT transitions stable; no thermal throttling; no memory leak</td><td>Device soak test with monitoring</td></tr>
+  </tbody>
+</table>
+</div>
+
+</div>
+<div class="phase-section" id="p3-agency">
+
+<h2>P3: Agency <span class="phase-tag">Months 15–20+</span></h2>
+
+<p class="phase-scope"><strong>Scope:</strong> Autonomous cross-app device agency (blueprint §79 V2 Agency).<br>
+<strong>Entry criteria:</strong> P2 complete — intelligent, context-aware assistant with full Brain, edge accelerator, and Context Graph.<br>
+<strong>Exit criteria:</strong> Waywiser autonomously executes authorized multi-app workflows with deterministic risk control, TOCTOU protection, and full audit trail.<br>
+<strong>Governing invariant:</strong> I2 — "LLMs may propose protected state transitions. They do not authorize them."</p>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>1. AccessibilityEngine <span class="lang-tag">Kotlin + Rust</span></h3>
+<p>Blueprint §§22–27. AccessibilityService as long-tail device automation. Event-driven architecture; never poll the tree.</p>
+
+<h4>Device provisioning (Android 15+ ECM bypass)</h4>
+<p>Enhanced Confirmation Mode blocks sideloaded apps from enabling AccessibilityService. Three provisioning paths — recommend <strong>Option B</strong> for scalability:</p>
+<div class="spec-table">
+<table>
+<thead><tr><th>Option</th><th>Mechanism</th><th>Scalability</th><th>Maintenance</th></tr></thead>
+<tbody>
+<tr><td>A</td><td>Custom factory image: package in <code>/system/etc/sysconfig</code></td><td>Low (per-image)</td><td>High (reflash on change)</td></tr>
+<tr><td>B</td><td>MDM programmatic grant</td><td>High (fleet-wide)</td><td>Low (policy push)</td></tr>
+<tr><td>C</td><td>Per-device ADB: <code>adb shell settings put secure enabled_accessibility_services</code></td><td>Low (manual)</td><td>Medium (per update)</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>Rust types</h4>
+<pre><code class="language-rust">/// Normalized accessibility tree node — platform-independent representation.
+/// Kotlin AccessibilityBridge converts AccessibilityNodeInfo → this via FFI.
+#[derive(Clone, Debug)]
+pub struct A11yNode {
+    pub node_id:             i64,
+    pub package:             String,
+    pub window_id:           i32,
+    pub resource_id:         Option&lt;String&gt;,
+    pub class_name:          String,
+    pub role:                Option&lt;String&gt;,
+    pub text:                Option&lt;String&gt;,
+    pub content_description: Option&lt;String&gt;,
+    pub hint_text:           Option&lt;String&gt;,
+    pub state_description:   Option&lt;String&gt;,
+    pub bounds:              Rect,
+    pub is_clickable:        bool,
+    pub is_scrollable:       bool,
+    pub is_editable:         bool,
+    pub is_focusable:        bool,
+    pub is_checked:          Option&lt;bool&gt;,
+    pub children:            Vec&lt;A11yNode&gt;,
+}
+
+/// Quality of the inspected accessibility tree.
+/// Strategy selection depends on this (§26).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TreeQuality {
+    /// Rich metadata: semantic automation viable.
+    Good,
+    /// Some metadata: semantic + optional visual verification.
+    Partial,
+    /// Sparse metadata: visual reasoning + stronger approval.
+    Poor,
+    /// No usable metadata: refuse autonomous operation.
+    Unusable,
+}
+
+/// Secure-window state for a given accessibility context.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SecureWindowState {
+    Normal,
+    /// FLAG_SECURE detected — visual automation unavailable,
+    /// semantic tree may or may not still be readable.
+    SecureBlocked,
+}
+
+/// A snapshot of the current accessibility tree for a window.
+pub struct TreeSnapshot {
+    pub window_id:      i32,
+    pub package:        String,
+    pub root:           A11yNode,
+    pub quality:        TreeQuality,
+    pub secure_state:   SecureWindowState,
+    pub captured_at:    DateTime&lt;Utc&gt;,
+}
+
+/// Assess tree quality from node metadata density.
+pub fn assess_tree_quality(root: &amp;A11yNode) -&gt; TreeQuality {
+    let total = count_nodes(root);
+    let with_id = count_with(root, |n| n.resource_id.is_some());
+    let with_desc = count_with(root, |n| {
+        n.content_description.is_some() || n.text.is_some()
+    });
+    let ratio = (with_id + with_desc) as f64 / (total.max(1) * 2) as f64;
+    match ratio {
+        r if r &gt;= 0.6 =&gt; TreeQuality::Good,
+        r if r &gt;= 0.3 =&gt; TreeQuality::Partial,
+        r if r &gt;= 0.1 =&gt; TreeQuality::Poor,
+        _              =&gt; TreeQuality::Unusable,
+    }
+}</code></pre>
+
+<h4>Kotlin bridge</h4>
+<pre><code class="language-kotlin">/**
+ * AccessibilityBridge: event-driven, never polls.
+ * Receives AccessibilityEvents, converts to Rust A11yNode on demand.
+ */
+class WaywiserAccessibilityService : AccessibilityService() {
+
+    // Event-driven: react to changes, don't poll
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        when (event.eventType) {
+            TYPE_WINDOW_STATE_CHANGED  -&gt; onWindowChanged(event)
+            TYPE_WINDOW_CONTENT_CHANGED -&gt; onContentChanged(event)
+            TYPE_VIEW_CLICKED          -&gt; onViewClicked(event)
+            TYPE_NOTIFICATION_STATE_CHANGED -&gt; onNotificationChanged(event)
+        }
+    }
+
+    /** Snapshot current tree — called only for pre-action verification. */
+    fun captureTreeSnapshot(windowId: Int): TreeSnapshot {
+        val root = rootInActiveWindow ?: throw A11yUnavailableException()
+        val flags = root.window?.let { windowFlags(it) }
+        val secureState = if (flags?.hasSecureFlag == true)
+            SecureWindowState.SECURE_BLOCKED
+        else
+            SecureWindowState.NORMAL
+        val rustNode = convertToA11yNode(root)
+        return TreeSnapshot(windowId, root.packageName.toString(),
+            rustNode, assessQuality(rustNode), secureState)
+    }
+
+    /** Execute an action on a resolved node. */
+    fun performNodeAction(nodeId: Long, action: A11yAction): Boolean {
+        val node = findNodeById(nodeId) ?: return false
+        return node.performAction(action.toAndroidAction())
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>2. RiskClassifier <span class="lang-tag">Rust · waywiser-security ext.</span></h3>
+<p>Blueprint §§23–23.5. Five-layer deterministic pipeline. <strong>Invariant: risk may only stay the same or increase as layers execute.</strong></p>
+
+<pre><code class="language-rust">/// Five-layer risk classification pipeline.
+/// Each layer can only maintain or RAISE the current risk floor.
+pub struct RiskClassifier {
+    sensitive_packages:    HashMap&lt;String, PackagePolicy&gt;,
+    automation_profiles:   Vec&lt;AutomationProfile&gt;,
+    semantic_rules:        Vec&lt;SemanticRule&gt;,
+    primitive_floors:      HashMap&lt;PrimitiveActionKind, RiskLevel&gt;,
+}
+
+/// Per-package security policy (Layer 1).
+pub struct PackagePolicy {
+    pub package:    String,
+    pub automation: AutomationPolicy,  // Allow | Block
+    pub floor:      Option&lt;RiskLevel&gt;,
+}
+
+/// Semantic text rule (Layer 3).
+pub struct SemanticRule {
+    pub pattern:  regex::Regex,        // e.g. r"send|reply|publish|post"
+    pub floor:    RiskLevel,           // e.g. Communication
+}
+
+/// Input to the classifier.
+pub struct ClassificationRequest {
+    pub package:      String,
+    pub node:         A11yNode,
+    pub action:       PrimitiveActionKind,
+    pub llm_hint:     Option&lt;LlmRiskHint&gt;,  // non-authoritative, logged only
+}
+
+/// Output from the classifier.
+pub struct ClassificationResult {
+    pub final_risk:     RiskLevel,
+    pub layer_trace:    Vec&lt;LayerDecision&gt;,  // audit trail
+    pub llm_hint_used:  bool,               // always false for final_risk
+    pub approval_mode:  ApprovalMode,       // Auto | AskUser | Block
+}
+
+/// One layer's contribution to the trace.
+pub struct LayerDecision {
+    pub layer:     ClassificationLayer,
+    pub matched:   bool,
+    pub risk_at:   RiskLevel,   // risk AFTER this layer (≥ previous)
+    pub reason:    String,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ClassificationLayer {
+    SensitivePackage,       // Layer 1
+    ReviewedProfile,        // Layer 2
+    SemanticRule,           // Layer 3
+    PrimitiveActionFloor,   // Layer 4
+    UnknownFallback,        // Layer 5
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PrimitiveActionKind {
+    InspectTree,
+    Scroll,
+    OpenApp,
+    Click,
+    Toggle,
+    TypeText,
+    Paste,
+    Gesture,
+}
+
+impl RiskClassifier {
+    /// Classify risk. Layers execute in order 1→5.
+    /// Risk floor can only increase; decrease is a logic error.
+    pub fn classify(&amp;self, req: &amp;ClassificationRequest) -&gt; ClassificationResult {
+        let mut risk = RiskLevel::None;
+        let mut trace = Vec::new();
+
+        // Layer 1: Sensitive-package policy
+        if let Some(policy) = self.sensitive_packages.get(&amp;req.package) {
+            if policy.automation == AutomationPolicy::Block {
+                return ClassificationResult::blocked(
+                    &amp;trace, "sensitive-package: automation blocked"
+                );
+            }
+            if let Some(floor) = policy.floor {
+                risk = risk.max(floor);
+            }
+            trace.push(LayerDecision::hit(ClassificationLayer::SensitivePackage, risk));
+        }
+
+        // Layer 2: Reviewed automation profile
+        if let Some(profile) = self.find_profile(&amp;req.package, &amp;req.node) {
+            risk = risk.max(profile.risk);
+            trace.push(LayerDecision::hit(ClassificationLayer::ReviewedProfile, risk));
+        }
+
+        // Layer 3: Deterministic semantic rules
+        let text = req.node.combined_text();
+        for rule in &amp;self.semantic_rules {
+            if rule.pattern.is_match(&amp;text) {
+                risk = risk.max(rule.floor);
+                trace.push(LayerDecision::hit(ClassificationLayer::SemanticRule, risk));
+                break;
+            }
+        }
+
+        // Layer 4: Primitive action-type floor
+        if let Some(&amp;floor) = self.primitive_floors.get(&amp;req.action) {
+            risk = risk.max(floor);
+            trace.push(LayerDecision::hit(ClassificationLayer::PrimitiveActionFloor, risk));
+        }
+
+        // Layer 5: Unknown fallback
+        if risk == RiskLevel::None {
+            risk = RiskLevel::UiUnclassifiedWrite;
+            trace.push(LayerDecision::hit(ClassificationLayer::UnknownFallback, risk));
+        }
+
+        // Log LLM hint but NEVER let it lower risk
+        if let Some(hint) = &amp;req.llm_hint {
+            tracing::info!(llm_hint = ?hint, final_risk = ?risk,
+                "LLM risk hint logged (non-authoritative)");
+        }
+
+        ClassificationResult {
+            final_risk: risk,
+            layer_trace: trace,
+            llm_hint_used: false,
+            approval_mode: risk.default_approval_mode(),
+        }
+    }
+}</code></pre>
+
+<h4>Default semantic rules</h4>
+<div class="spec-table">
+<table>
+<thead><tr><th>Pattern</th><th>Risk Floor</th></tr></thead>
+<tbody>
+<tr><td><code>send|reply|publish|post|share</code></td><td>Communication</td></tr>
+<tr><td><code>pay|purchase|buy|checkout|transfer|wire</code></td><td>Financial</td></tr>
+<tr><td><code>delete|remove|erase|clear|wipe</code></td><td>Destructive</td></tr>
+<tr><td><code>install|uninstall|permission|grant|revoke</code></td><td>DeviceControl</td></tr>
+<tr><td><code>save|submit|apply|confirm|accept|agree</code></td><td>CrossAppWrite</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>Default primitive action floors</h4>
+<div class="spec-table">
+<table>
+<thead><tr><th>Action</th><th>Risk Floor</th></tr></thead>
+<tbody>
+<tr><td>InspectTree, Scroll</td><td>ReadPersonal</td></tr>
+<tr><td>OpenApp, Click, Toggle, Gesture</td><td>DeviceControl</td></tr>
+<tr><td>TypeText, Paste</td><td>CrossAppWrite</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>3. UIProfileManager <span class="lang-tag">Rust · waywiser-automation</span></h3>
+<p>Human-reviewed automation mappings for high-value internal apps (§23.2). Profiles are versioned and tied to app version.</p>
+
+<pre><code class="language-rust">/// A reviewed automation profile for a specific app package.
+#[derive(Clone, Debug, Deserialize)]
+pub struct AutomationProfile {
+    pub package:        String,
+    pub app_version:    String,
+    pub reviewed_at:    DateTime&lt;Utc&gt;,
+    pub reviewer:       String,
+    pub nodes:          HashMap&lt;String, NodeProfile&gt;,  // resourceId → profile
+}
+
+/// Mapping of a UI node to its capability effect and risk.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NodeProfile {
+    pub resource_id:    String,
+    pub effect:         CapabilityName,   // e.g. "communication.send"
+    pub risk:           RiskLevel,
+    pub description:    String,
+}
+
+/// Profile registry. Loaded from YAML at startup.
+pub struct ProfileRegistry {
+    profiles: HashMap&lt;String, AutomationProfile&gt;,  // keyed by package
+}
+
+impl ProfileRegistry {
+    /// Load all profiles from config directory.
+    pub fn load_from_dir(path: &amp;Path) -&gt; Result&lt;Self, ProfileError&gt;;
+
+    /// Find a matching profile entry for a node in a given package.
+    pub fn match_node(
+        &amp;self,
+        package: &amp;str,
+        node: &amp;A11yNode,
+    ) -&gt; Option&lt;&amp;NodeProfile&gt; {
+        let profile = self.profiles.get(package)?;
+        let rid = node.resource_id.as_ref()?;
+        profile.nodes.get(rid)
+    }
+
+    /// Check if a profile is stale (app version changed).
+    pub fn is_stale(&amp;self, package: &amp;str, current_version: &amp;str) -&gt; bool {
+        self.profiles.get(package)
+            .map(|p| p.app_version != current_version)
+            .unwrap_or(false)
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>4. TOCTOUProtection <span class="lang-tag">Kotlin + Rust</span></h3>
+<p>Blueprint §24. The UI changes between plan and execution — fingerprint-verify immediately before acting.</p>
+
+<pre><code class="language-rust">/// Fingerprint of a UI node at planning time.
+/// Used to verify the target hasn't changed before executing.
+#[derive(Clone, Debug)]
+pub struct NodeFingerprint {
+    pub package:              String,
+    pub window_id:            i32,
+    pub resource_id:          Option&lt;String&gt;,
+    pub class_name:           String,
+    pub role:                 Option&lt;String&gt;,
+    pub normalized_text:      Option&lt;String&gt;,
+    pub content_description:  Option&lt;String&gt;,
+    pub ancestor_signature:   Vec&lt;String&gt;,  // class names up the tree
+    pub state:                Option&lt;String&gt;,
+    pub approximate_bounds:   Rect,
+}
+
+/// Result of fingerprint comparison.
+#[derive(Debug)]
+pub enum FingerprintMatch {
+    Exact,
+    Partial { mismatches: Vec&lt;FingerprintMismatch&gt; },
+    NoMatch,
+}
+
+#[derive(Debug)]
+pub enum FingerprintMismatch {
+    TextChanged { expected: String, actual: String },
+    BoundsMoved { delta_x: i32, delta_y: i32 },
+    StateChanged { expected: String, actual: String },
+    AncestorChanged,
+    ResourceIdMissing,
+}
+
+/// Policy: what FingerprintMatch is acceptable per risk level?
+pub fn acceptable_match(risk: RiskLevel, m: &amp;FingerprintMatch) -&gt; bool {
+    match (risk, m) {
+        (_, FingerprintMatch::Exact) =&gt; true,
+        (_, FingerprintMatch::NoMatch) =&gt; false,
+        // High risk: require Exact — no partial allowed
+        (RiskLevel::Financial | RiskLevel::Destructive | RiskLevel::Communication,
+         FingerprintMatch::Partial { .. }) =&gt; false,
+        // Lower risk: partial OK if mismatches are cosmetic
+        (_, FingerprintMatch::Partial { mismatches }) =&gt;
+            mismatches.iter().all(|m| m.is_cosmetic()),
+    }
+}
+
+/// Pre-action verification: re-resolve, fingerprint, decide.
+pub fn verify_before_action(
+    bridge: &amp;dyn A11yBridge,
+    planned: &amp;NodeFingerprint,
+    risk: RiskLevel,
+) -&gt; Result&lt;A11yNode, TocTouError&gt; {
+    let snapshot = bridge.capture_tree_snapshot(planned.window_id)?;
+    let resolved = find_by_fingerprint(&amp;snapshot.root, planned)
+        .ok_or(TocTouError::TargetNotFound)?;
+    let current_fp = NodeFingerprint::from_node(&amp;resolved);
+    let comparison = planned.compare(&amp;current_fp);
+    if acceptable_match(risk, &amp;comparison) {
+        Ok(resolved)
+    } else {
+        Err(TocTouError::FingerprintMismatch {
+            planned: planned.clone(),
+            actual: current_fp,
+            comparison,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum TocTouError {
+    TargetNotFound,
+    FingerprintMismatch {
+        planned:    NodeFingerprint,
+        actual:     NodeFingerprint,
+        comparison: FingerprintMatch,
+    },
+    TreeUnavailable,
+    SecureWindow,
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>5. PostActionVerification <span class="lang-tag">Kotlin + Rust</span></h3>
+<p>Blueprint §25. Observe the outcome of a UI action to detect unexpected transitions.</p>
+
+<pre><code class="language-rust">/// Expected outcome of a UI action, defined at planning time.
+#[derive(Clone, Debug)]
+pub struct ExpectedTransition {
+    /// What the current window/activity should look like after the action.
+    pub expected_package:    Option&lt;String&gt;,
+    pub expected_window:     Option&lt;String&gt;,
+    /// Nodes that should appear (e.g. toast, confirmation).
+    pub expected_indicators: Vec&lt;TransitionIndicator&gt;,
+    /// Nodes that should disappear (e.g. the dialog we just confirmed).
+    pub expected_removals:   Vec&lt;String&gt;,  // resource_ids
+    /// Max time to wait for transition before declaring Unknown.
+    pub verification_timeout: Duration,
+}
+
+pub struct TransitionIndicator {
+    pub kind:     IndicatorKind,
+    pub text:     Option&lt;String&gt;,
+}
+
+pub enum IndicatorKind {
+    Toast,
+    Dialog,
+    ActivityChange,
+    ViewAppeared,
+    ViewDisappeared,
+}
+
+/// Post-action verification. Called after every significant UI action.
+pub fn verify_after_action(
+    bridge: &amp;dyn A11yBridge,
+    expected: &amp;ExpectedTransition,
+) -&gt; VerificationResult {
+    // Wait briefly for transition to settle
+    std::thread::sleep(expected.verification_timeout.min(Duration::from_millis(500)));
+
+    let snapshot = match bridge.capture_tree_snapshot_best_effort() {
+        Ok(s)  =&gt; s,
+        Err(_) =&gt; return VerificationResult::Unknown,
+    };
+
+    let indicators_present = expected.expected_indicators.iter()
+        .filter(|ind| find_indicator(&amp;snapshot.root, ind).is_some())
+        .count();
+
+    let removals_gone = expected.expected_removals.iter()
+        .filter(|rid| find_by_resource_id(&amp;snapshot.root, rid).is_none())
+        .count();
+
+    let total_checks = expected.expected_indicators.len()
+        + expected.expected_removals.len();
+
+    if total_checks == 0 {
+        return VerificationResult::Unknown;
+    }
+
+    let passed = indicators_present + removals_gone;
+    let ratio = passed as f64 / total_checks as f64;
+
+    match ratio {
+        r if r &gt;= 0.8 =&gt; VerificationResult::Verified,
+        r if r &gt;= 0.4 =&gt; VerificationResult::Likely,
+        _              =&gt; VerificationResult::Unexpected,
+    }
+}
+
+// VerificationResult defined in shared types (P0):
+// Verified | Likely | Unexpected | Unknown
+//
+// UNEXPECTED → halt all further side effects in the current sequence.
+// Stored in ActionReceipt.verification.</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>6. CrossAppWorkflows <span class="lang-tag">Rust · waywiser-workflows</span></h3>
+<p>Multi-step action sequences across apps. Not true ACID — but explicit tracking of what succeeded and what failed, with compensating actions for reversible steps.</p>
+
+<pre><code class="language-rust">/// A multi-step cross-app workflow.
+pub struct Workflow {
+    pub id:         Uuid,
+    pub name:       String,
+    pub goal_id:    Option&lt;GoalId&gt;,
+    pub steps:      Vec&lt;WorkflowStep&gt;,
+    pub status:     WorkflowStatus,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub updated_at: DateTime&lt;Utc&gt;,
+}
+
+pub struct WorkflowStep {
+    pub index:              usize,
+    pub action_intent:      ActionIntent,
+    pub pre_conditions:     Vec&lt;PreCondition&gt;,
+    pub expected_outcome:   ExpectedTransition,
+    pub actual_outcome:     Option&lt;VerificationResult&gt;,
+    pub receipt:            Option&lt;ActionReceipt&gt;,
+    pub status:             StepStatus,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum WorkflowStatus {
+    Planning,
+    Executing { current_step: usize },
+    Completed,
+    PartiallyCompleted { failed_at: usize },
+    Aborted { reason: AbortReason },
+    RollingBack { from_step: usize },
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum StepStatus {
+    Pending,
+    Executing,
+    Succeeded,
+    Failed,
+    Skipped,
+    RolledBack,
+    UnknownSideEffect,
+}
+
+pub enum AbortReason {
+    VerificationUnexpected,
+    TocTouMismatch,
+    SecurityDenied,
+    UserCancelled,
+    ProcessDeath,
+}
+
+pub struct PreCondition {
+    pub kind:    PreConditionKind,
+    pub check:   String,  // human-readable description for audit
+}
+
+pub enum PreConditionKind {
+    AppInstalled(String),
+    PermissionGranted(Permission),
+    NetworkAvailable,
+    LeaseValid(Uuid),
+    PriorStepSucceeded(usize),
+}
+
+impl Workflow {
+    /// Execute the workflow step-by-step.
+    /// Between each step: verify pre-conditions and post-action outcome.
+    /// On UNEXPECTED: halt and record partial completion.
+    pub async fn execute(
+        &amp;mut self,
+        kernel: &amp;SecurityKernel,
+        bridge: &amp;dyn A11yBridge,
+    ) -&gt; WorkflowResult {
+        for step in &amp;mut self.steps {
+            // 1. Check pre-conditions
+            if !step.check_pre_conditions() {
+                step.status = StepStatus::Failed;
+                self.status = WorkflowStatus::PartiallyCompleted {
+                    failed_at: step.index
+                };
+                return WorkflowResult::Partial;
+            }
+
+            // 2. Run through full ActionPipeline
+            let receipt = kernel.process_intent(&amp;step.action_intent).await;
+
+            // 3. Post-action verification
+            let verification = verify_after_action(bridge, &amp;step.expected_outcome);
+            step.actual_outcome = Some(verification);
+            step.receipt = Some(receipt);
+
+            match verification {
+                VerificationResult::Unexpected =&gt; {
+                    step.status = StepStatus::Failed;
+                    self.status = WorkflowStatus::Aborted {
+                        reason: AbortReason::VerificationUnexpected
+                    };
+                    // HALT — do not execute further steps
+                    return WorkflowResult::Aborted;
+                }
+                VerificationResult::Unknown =&gt; {
+                    step.status = StepStatus::UnknownSideEffect;
+                    // Continue with caution — next step checks pre-conditions
+                }
+                _ =&gt; {
+                    step.status = StepStatus::Succeeded;
+                }
+            }
+        }
+        self.status = WorkflowStatus::Completed;
+        WorkflowResult::Completed
+    }
+
+    /// Attempt to roll back completed reversible steps.
+    pub async fn rollback(
+        &amp;mut self,
+        kernel: &amp;SecurityKernel,
+    ) -&gt; RollbackResult {
+        let mut rolled = 0;
+        for step in self.steps.iter_mut().rev() {
+            if step.status != StepStatus::Succeeded { continue; }
+            if let Some(receipt) = &amp;step.receipt {
+                if receipt.reversible &amp;&amp; receipt.undo_token.is_some() {
+                    // Execute compensating action
+                    kernel.execute_undo(receipt).await;
+                    step.status = StepStatus::RolledBack;
+                    rolled += 1;
+                }
+            }
+        }
+        RollbackResult { steps_rolled_back: rolled }
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>7. AdvancedDelegation <span class="lang-tag">Rust · waywiser-delegation ext.</span></h3>
+<p>Extends P1 AgentSupervisor with orchestrator agents, verification agents, multi-agent coordination.</p>
+
+<pre><code class="language-rust">/// Extended agent class (P3 adds Orchestrator and Verification).
+/// P1 defined: Primary, Leaf, CognitionWorker.
+#[derive(Copy, Clone, Debug)]
+pub enum AgentClass {
+    // — from P1 —
+    Primary,
+    Leaf,
+    CognitionWorker,
+    // — P3 additions —
+    /// May create child agents within budget. Max depth still 2.
+    Orchestrator,
+    /// Can inspect evidence, CANNOT mutate external state.
+    /// Read-only capabilities only.
+    Verification,
+}
+
+/// P3 extension: capability inheritance rules per class.
+impl AgentClass {
+    pub fn capability_filter(&amp;self) -&gt; CapabilityFilter {
+        match self {
+            Self::Verification =&gt; CapabilityFilter::ReadOnly,
+            Self::CognitionWorker =&gt; CapabilityFilter::InternalOnly,
+            Self::Leaf =&gt; CapabilityFilter::InheritParent,
+            Self::Orchestrator =&gt; CapabilityFilter::InheritParent,
+            Self::Primary =&gt; CapabilityFilter::Full,
+        }
+    }
+
+    pub fn can_delegate(&amp;self) -&gt; bool {
+        matches!(self, Self::Primary | Self::Orchestrator)
+    }
+}
+
+/// Multi-agent coordination: shared work graph conflict detection.
+pub struct AgentCoordinator {
+    active_agents: HashMap&lt;AgentId, AgentState&gt;,
+    work_locks:    HashMap&lt;WorkItemId, AgentId&gt;,
+}
+
+impl AgentCoordinator {
+    /// Claim a work item. Prevents two agents from working on the same item.
+    pub fn claim_work_item(
+        &amp;mut self,
+        agent: AgentId,
+        item: WorkItemId,
+    ) -&gt; Result&lt;(), ConflictError&gt; {
+        if let Some(holder) = self.work_locks.get(&amp;item) {
+            if *holder != agent {
+                return Err(ConflictError::AlreadyClaimed {
+                    item, holder: *holder
+                });
+            }
+        }
+        self.work_locks.insert(item, agent);
+        Ok(())
+    }
+
+    /// Enforce delegation depth. Invariant: max 2 levels.
+    pub fn check_depth(&amp;self, parent: AgentId) -&gt; Result&lt;(), DepthError&gt; {
+        let depth = self.agent_depth(parent);
+        if depth &gt;= 2 {
+            Err(DepthError::MaxDepthExceeded { current: depth })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Enforce budget cascading: child ≤ remaining parent budget.
+    pub fn allocate_child_budget(
+        &amp;self,
+        parent: AgentId,
+        requested: &amp;DelegationBudget,
+    ) -&gt; Result&lt;DelegationBudget, BudgetError&gt; {
+        let parent_remaining = self.remaining_budget(parent)?;
+        if !parent_remaining.can_cover(requested) {
+            return Err(BudgetError::InsufficientParentBudget);
+        }
+        Ok(requested.clone().cap_at(&amp;parent_remaining))
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>8. ApprovalLeases — Full Model <span class="lang-tag">Rust · waywiser-security ext.</span></h3>
+<p>Blueprint §21. Extends P1 basic leases to the full scoped autonomy model.</p>
+
+<pre><code class="language-rust">/// Full approval lease (P3 extension of P1 basic lease).
+pub struct ApprovalLease {
+    pub id:               Uuid,
+    pub capability:       CapabilityName,
+    pub scope:            LeaseScope,
+    pub constraints:      LeaseConstraints,
+    pub valid_until:      DateTime&lt;Utc&gt;,
+    pub max_executions:   Option&lt;u32&gt;,
+    pub executions_used:  u32,
+    pub granted_by:       GrantSource,
+    pub granted_at:       DateTime&lt;Utc&gt;,
+    pub last_used_at:     Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub revoked:          bool,
+    pub audit_trail:      Vec&lt;LeaseUseRecord&gt;,
+}
+
+pub struct LeaseScope {
+    pub account:          Option&lt;String&gt;,
+    pub context_filters:  HashMap&lt;String, serde_json::Value&gt;,
+}
+
+pub struct LeaseConstraints {
+    pub forbid: Vec&lt;String&gt;,     // e.g. ["delete"]
+    pub allow:  Option&lt;Vec&lt;String&gt;&gt;,  // if Some, allowlist mode
+}
+
+pub enum GrantSource {
+    UserExplicit,
+    BiometricConfirm,
+    SystemDefault,
+}
+
+pub struct LeaseUseRecord {
+    pub intent_id:    Uuid,
+    pub used_at:      DateTime&lt;Utc&gt;,
+    pub arguments:    serde_json::Value,
+    pub result:       ActionStatus,
+}
+
+impl ApprovalLease {
+    /// Evaluate whether this lease authorizes a given intent.
+    pub fn evaluate(&amp;self, intent: &amp;ActionIntent, now: DateTime&lt;Utc&gt;) -&gt; LeaseDecision {
+        if self.revoked {
+            return LeaseDecision::Denied(LeaseReason::Revoked);
+        }
+        if now &gt;= self.valid_until {
+            return LeaseDecision::Denied(LeaseReason::Expired);
+        }
+        if let Some(max) = self.max_executions {
+            if self.executions_used &gt;= max {
+                return LeaseDecision::Denied(LeaseReason::BudgetExhausted);
+            }
+        }
+        if !self.scope.matches(intent) {
+            return LeaseDecision::Denied(LeaseReason::OutOfScope);
+        }
+        if !self.constraints.permits(intent) {
+            return LeaseDecision::Denied(LeaseReason::ConstraintViolation);
+        }
+        LeaseDecision::Authorized
+    }
+
+    /// Record a use. Increments counter, appends audit entry.
+    pub fn record_use(&amp;mut self, intent_id: Uuid, args: &amp;serde_json::Value, result: ActionStatus) {
+        self.executions_used += 1;
+        self.last_used_at = Some(Utc::now());
+        self.audit_trail.push(LeaseUseRecord {
+            intent_id,
+            used_at: Utc::now(),
+            arguments: args.clone(),
+            result,
+        });
+    }
+
+    /// Revoke immediately. In-flight actions complete; no new ones.
+    pub fn revoke(&amp;mut self) {
+        self.revoked = true;
+    }
+}
+
+pub enum LeaseDecision {
+    Authorized,
+    Denied(LeaseReason),
+}
+
+pub enum LeaseReason {
+    Revoked,
+    Expired,
+    BudgetExhausted,
+    OutOfScope,
+    ConstraintViolation,
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>9. ActionPipeline — Full Lifecycle <span class="lang-tag">Rust · waywiser-security</span></h3>
+<p>Blueprint §§17–20. The complete intent-to-receipt pipeline, bringing every P3 security component together.</p>
+
+<h4>Pipeline state machine</h4>
+<pre><code class="language-rust">/// Lifecycle states of an ActionIntent through the security pipeline.
+///
+///   Proposed → Authorized → Executing → Verifying → Completed
+///                 │              │            │
+///                 ├→ Denied      ├→ Failed    ├→ UnknownSideEffect
+///                 │              └→ Crashed   └→ Unexpected
+///                 └→ Escalated (ask user)
+#[derive(Copy, Clone, Debug)]
+pub enum PipelineStage {
+    Proposed,
+    CapabilityCheck,
+    RiskClassification,
+    PolicyCheck,
+    LeaseCheck,
+    OsPermissionCheck,
+    UserApproval,
+    Authorized,
+    Executing,
+    Verifying,
+    Completed,
+    Denied { reason: String },
+    Failed { error: String },
+    UnknownSideEffect,
+}
+
+/// The full pipeline executor.
+pub struct ActionPipeline {
+    capabilities:   CapabilityRegistry,     // from P1
+    classifier:     RiskClassifier,         // this phase
+    policy:         WaywiserPolicy,         // from P1
+    leases:         LeaseStore,             // this phase (full)
+    os_permissions: OsPermissionChecker,    // from P1
+}
+
+impl ActionPipeline {
+    /// Process an ActionIntent through the full security pipeline.
+    /// Returns an ActionReceipt (always — even for denials).
+    pub async fn process(
+        &amp;self,
+        intent: ActionIntent,
+        bridge: Option&lt;&amp;dyn A11yBridge&gt;,
+        user_prompt: &amp;dyn UserApprovalPrompt,
+    ) -&gt; ActionReceipt {
+        let mut stage = PipelineStage::Proposed;
+        let started_at = Utc::now();
+
+        // 1. Capability exists?
+        stage = PipelineStage::CapabilityCheck;
+        let spec = match self.capabilities.get(&amp;intent.capability) {
+            Some(s) =&gt; s,
+            None =&gt; return ActionReceipt::denied(
+                &amp;intent, started_at, "unknown capability"
+            ),
+        };
+
+        // 2. Risk classification (5-layer for UI actions, spec-declared for others)
+        stage = PipelineStage::RiskClassification;
+        let risk = if let Some(bridge) = bridge {
+            // UI action: run 5-layer classifier
+            let req = ClassificationRequest::from_intent(&amp;intent, bridge);
+            self.classifier.classify(&amp;req).final_risk
+        } else {
+            // Non-UI: use capability-declared risk
+            spec.risk
+        };
+
+        // 3. Waywiser policy check
+        stage = PipelineStage::PolicyCheck;
+        if let Err(deny) = self.policy.check(&amp;intent, &amp;spec, risk) {
+            return ActionReceipt::denied(&amp;intent, started_at, &amp;deny.reason);
+        }
+
+        // 4. Approval lease check
+        stage = PipelineStage::LeaseCheck;
+        let lease_ok = self.leases.find_valid_lease(
+            &amp;intent.capability, &amp;intent
+        );
+
+        // 5. OS permission check
+        stage = PipelineStage::OsPermissionCheck;
+        if let Err(e) = self.os_permissions.check_for(&amp;spec) {
+            return ActionReceipt::denied(&amp;intent, started_at,
+                &amp;format!("OS permission missing: {e}"));
+        }
+
+        // 6. User approval if required and no valid lease
+        stage = PipelineStage::UserApproval;
+        if lease_ok.is_none() &amp;&amp; risk.requires_user_approval() {
+            match user_prompt.request_approval(&amp;intent, risk).await {
+                Approval::Granted =&gt; {}
+                Approval::GrantedWithLease(lease) =&gt; {
+                    self.leases.store(lease);
+                }
+                Approval::Denied =&gt; {
+                    return ActionReceipt::denied(
+                        &amp;intent, started_at, "user denied"
+                    );
+                }
+            }
+        }
+
+        // Record lease use if applicable
+        if let Some(lease) = lease_ok {
+            self.leases.record_use(lease.id, &amp;intent);
+        }
+
+        // 7. Execute — this is the side-effect boundary
+        stage = PipelineStage::Executing;
+
+        // PERSIST intent as EXECUTING before dispatch (crash safety)
+        self.persist_stage(&amp;intent, PipelineStage::Executing);
+
+        let exec_result = match spec.execution_mode {
+            ExecutionMode::Local =&gt; self.execute_local(&amp;intent, &amp;spec).await,
+            ExecutionMode::UiAutomation =&gt; {
+                self.execute_ui(&amp;intent, &amp;spec, bridge.unwrap()).await
+            }
+            ExecutionMode::Remote =&gt; self.execute_remote(&amp;intent, &amp;spec).await,
+        };
+
+        // 8. Verification
+        stage = PipelineStage::Verifying;
+        let verification = match (&amp;exec_result, bridge) {
+            (Ok(_), Some(b)) =&gt; verify_after_action(b, &amp;intent.expected_transition()),
+            (Ok(_), None)    =&gt; VerificationResult::Unknown,
+            (Err(_), _)      =&gt; VerificationResult::Unknown,
+        };
+
+        // 9. Build receipt
+        let status = match exec_result {
+            Ok(result) =&gt; ActionStatus::Completed,
+            Err(ExecError::Crashed) =&gt; ActionStatus::UnknownSideEffect,
+            Err(ExecError::Failed(e)) =&gt; ActionStatus::Failed(e),
+        };
+
+        ActionReceipt {
+            intent_id:          intent.id,
+            capability:         intent.capability.clone(),
+            started_at,
+            completed_at:       Some(Utc::now()),
+            status,
+            external_reference: exec_result.ok().and_then(|r| r.external_ref),
+            reversible:         spec.reversible,
+            undo_token:         exec_result.ok().and_then(|r| r.undo_token),
+            verification,
+            result_summary:     exec_result.ok().map(|r| r.summary),
+        }
+    }
+}
+
+/// Replay policy enforcement on crash recovery.
+impl ActionPipeline {
+    pub fn recover_after_crash(
+        &amp;self,
+        pending: Vec&lt;ActionIntent&gt;,
+    ) -&gt; Vec&lt;RecoveryAction&gt; {
+        pending.into_iter().map(|intent| {
+            let spec = self.capabilities.get(&amp;intent.capability);
+            match spec.map(|s| s.replay_policy) {
+                Some(ReplayPolicy::SafeReplay) =&gt;
+                    RecoveryAction::Retry(intent),
+                Some(ReplayPolicy::NeverReplay) =&gt;
+                    RecoveryAction::MarkFailed(intent, "never-replay policy"),
+                Some(ReplayPolicy::VerifyBeforeRetry) =&gt;
+                    RecoveryAction::VerifyThenDecide(intent),
+                None =&gt;
+                    RecoveryAction::MarkFailed(intent, "unknown capability"),
+            }
+        }).collect()
+    }
+}
+
+pub enum RecoveryAction {
+    Retry(ActionIntent),
+    MarkFailed(ActionIntent, &amp;'static str),
+    VerifyThenDecide(ActionIntent),
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>10. RemoteExecution <span class="lang-tag">Rust · waywiser-remote — OPTIONAL</span></h3>
+<p>Optional remote execution nodes for delegating heavy workloads. Ships after the rest of P3. Remote nodes are NOT trusted more than local — same security kernel applies.</p>
+
+<pre><code class="language-rust">/// A remote compute node that can execute capabilities.
+pub struct RemoteNode {
+    pub id:             Uuid,
+    pub name:           String,
+    pub endpoint:       String,
+    pub capabilities:   Vec&lt;CapabilityName&gt;,
+    pub status:         RemoteNodeStatus,
+    pub last_heartbeat: DateTime&lt;Utc&gt;,
+    pub auth_token:     String,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum RemoteNodeStatus {
+    Online,
+    Degraded,
+    Offline,
+}
+
+/// Remote capability — proxied through the local security kernel.
+/// Security is NOT delegated to the remote node.
+pub struct RemoteExecutor {
+    nodes:  Vec&lt;RemoteNode&gt;,
+    kernel: Arc&lt;SecurityKernel&gt;,
+}
+
+impl RemoteExecutor {
+    /// Execute on remote. Full local authorization first.
+    pub async fn execute(
+        &amp;self,
+        intent: &amp;ActionIntent,
+    ) -&gt; Result&lt;ActionReceipt, RemoteError&gt; {
+        // Local authorization FIRST (same pipeline as local execution)
+        // Only the execution step is delegated to remote.
+        let node = self.find_capable_node(&amp;intent.capability)?;
+        if node.status == RemoteNodeStatus::Offline {
+            return Err(RemoteError::NodeOffline(node.id));
+        }
+
+        let result = self.dispatch_to_node(&amp;node, intent).await;
+
+        match result {
+            Ok(receipt) =&gt; {
+                // Verify result locally
+                Ok(receipt)
+            }
+            Err(RemoteError::Disconnected) =&gt; {
+                // In-flight → UNKNOWN_SIDE_EFFECT
+                Ok(ActionReceipt {
+                    status: ActionStatus::UnknownSideEffect,
+                    verification: VerificationResult::Unknown,
+                    ..ActionReceipt::from_intent(intent)
+                })
+            }
+            Err(e) =&gt; Err(e),
+        }
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>Acceptance Criteria</h3>
+<div class="acceptance-criteria">
+<ol>
+<li><strong>ECM provisioned:</strong> AccessibilityService enabled via MDM on target device → tree inspection works, nodes readable for all non-secure apps.</li>
+<li><strong>Banking blocked:</strong> Automation attempted on <code>com.example.bank</code> → RiskClassifier returns <code>Block</code>, no action taken, no override possible regardless of lease or user request.</li>
+<li><strong>Reviewed profile enforced:</strong> Company mail send button → reviewed profile maps to <code>Communication</code> risk → user approval required → approved → action executes → receipt logged.</li>
+<li><strong>Unknown app fallback:</strong> Click on unknown app → classified as <code>DeviceControl</code> → user prompted → audit trail records classification layer trace.</li>
+<li><strong>Risk monotonicity:</strong> 500 synthetic UI actions through classifier → risk NEVER decreases between layers. Automated property test.</li>
+<li><strong>TOCTOU protection:</strong> Target button moves between plan and execution → fingerprint mismatch → abort with <code>TocTouError::FingerprintMismatch</code>, no side effect executed.</li>
+<li><strong>High-risk TOCTOU strictness:</strong> Financial-risk action with <code>FingerprintMatch::Partial</code> → rejected (exact match required for high risk).</li>
+<li><strong>Post-action halt on Unexpected:</strong> Click send → unexpected error dialog appears → <code>VerificationResult::Unexpected</code> → all further workflow steps halted immediately.</li>
+<li><strong>Cross-app workflow:</strong> "Reschedule dentist" → open calendar → find event → modify → verify → receipt with undo token. Receipts match actual calendar state.</li>
+<li><strong>Workflow rollback:</strong> Workflow step 3 of 5 fails → steps 1–2 (reversible) rolled back via undo tokens → rolled-back steps marked <code>RolledBack</code>.</li>
+<li><strong>Lease lifecycle:</strong> Granted for <code>calendar.update</code> until 18:00, max 5 → works 5 times → 6th denied with <code>BudgetExhausted</code> → re-approval required.</li>
+<li><strong>Lease expiry:</strong> Lease expires → immediate denial, clean <code>LeaseReason::Expired</code>. No grace period.</li>
+<li><strong>Self-improvement blocked:</strong> Learned skill attempts <code>waywiser.security.grant_capability</code> → deterministic validator rejects, invariant I10 enforced.</li>
+<li><strong>Delegation depth:</strong> Orchestrator creates 2 leaf agents → succeeds. Leaf attempts to delegate → denied with <code>DepthError::MaxDepthExceeded</code>.</li>
+<li><strong>Budget cascading:</strong> Parent has 1000 tokens remaining → child requests 1500 → capped at 1000.</li>
+<li><strong>Verification agent read-only:</strong> Verification agent attempts a write capability → denied by <code>CapabilityFilter::ReadOnly</code>.</li>
+<li><strong>Crash recovery:</strong> Process crash after calendar update dispatch → recovery finds <code>PipelineStage::Executing</code> → <code>VerifyBeforeRetry</code> policy → verifies calendar state → correct state determined, receipt updated.</li>
+<li><strong>FLAG_SECURE:</strong> Secure window detected → <code>SecureWindowState::SecureBlocked</code> → no fabricated visual context, automation gracefully declined.</li>
+<li><strong>Idempotency:</strong> Same <code>idempotency_key</code> submitted twice → second execution skipped, original receipt returned.</li>
+<li><strong>Soak test:</strong> 100 cross-app actions over 8 hours → all receipts match actual app outcomes. No leaked JNI refs, no memory growth, no orphaned intents.</li>
+</ol>
+</div>
+
+</div>
+</div>

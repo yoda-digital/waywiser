@@ -1,0 +1,1099 @@
+<div class="phase-section" id="p3-agency">
+
+<h2>P3: Agency <span class="phase-tag">Months 15–20+</span></h2>
+
+<p class="phase-scope"><strong>Scope:</strong> Autonomous cross-app device agency (blueprint §79 V2 Agency).<br>
+<strong>Entry criteria:</strong> P2 complete — intelligent, context-aware assistant with full Brain, edge accelerator, and Context Graph.<br>
+<strong>Exit criteria:</strong> Waywiser autonomously executes authorized multi-app workflows with deterministic risk control, TOCTOU protection, and full audit trail.<br>
+<strong>Governing invariant:</strong> I2 — "LLMs may propose protected state transitions. They do not authorize them."</p>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>1. AccessibilityEngine <span class="lang-tag">Kotlin + Rust</span></h3>
+<p>Blueprint §§22–27. AccessibilityService as long-tail device automation. Event-driven architecture; never poll the tree.</p>
+
+<h4>Device provisioning (Android 15+ ECM bypass)</h4>
+<p>Enhanced Confirmation Mode blocks sideloaded apps from enabling AccessibilityService. Three provisioning paths — recommend <strong>Option B</strong> for scalability:</p>
+<div class="spec-table">
+<table>
+<thead><tr><th>Option</th><th>Mechanism</th><th>Scalability</th><th>Maintenance</th></tr></thead>
+<tbody>
+<tr><td>A</td><td>Custom factory image: package in <code>/system/etc/sysconfig</code></td><td>Low (per-image)</td><td>High (reflash on change)</td></tr>
+<tr><td>B</td><td>MDM programmatic grant</td><td>High (fleet-wide)</td><td>Low (policy push)</td></tr>
+<tr><td>C</td><td>Per-device ADB: <code>adb shell settings put secure enabled_accessibility_services</code></td><td>Low (manual)</td><td>Medium (per update)</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>Rust types</h4>
+<pre><code class="language-rust">/// Normalized accessibility tree node — platform-independent representation.
+/// Kotlin AccessibilityBridge converts AccessibilityNodeInfo → this via FFI.
+#[derive(Clone, Debug)]
+pub struct A11yNode {
+    pub node_id:             i64,
+    pub package:             String,
+    pub window_id:           i32,
+    pub resource_id:         Option&lt;String&gt;,
+    pub class_name:          String,
+    pub role:                Option&lt;String&gt;,
+    pub text:                Option&lt;String&gt;,
+    pub content_description: Option&lt;String&gt;,
+    pub hint_text:           Option&lt;String&gt;,
+    pub state_description:   Option&lt;String&gt;,
+    pub bounds:              Rect,
+    pub is_clickable:        bool,
+    pub is_scrollable:       bool,
+    pub is_editable:         bool,
+    pub is_focusable:        bool,
+    pub is_checked:          Option&lt;bool&gt;,
+    pub children:            Vec&lt;A11yNode&gt;,
+}
+
+/// Quality of the inspected accessibility tree.
+/// Strategy selection depends on this (§26).
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TreeQuality {
+    /// Rich metadata: semantic automation viable.
+    Good,
+    /// Some metadata: semantic + optional visual verification.
+    Partial,
+    /// Sparse metadata: visual reasoning + stronger approval.
+    Poor,
+    /// No usable metadata: refuse autonomous operation.
+    Unusable,
+}
+
+/// Secure-window state for a given accessibility context.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SecureWindowState {
+    Normal,
+    /// FLAG_SECURE detected — visual automation unavailable,
+    /// semantic tree may or may not still be readable.
+    SecureBlocked,
+}
+
+/// A snapshot of the current accessibility tree for a window.
+pub struct TreeSnapshot {
+    pub window_id:      i32,
+    pub package:        String,
+    pub root:           A11yNode,
+    pub quality:        TreeQuality,
+    pub secure_state:   SecureWindowState,
+    pub captured_at:    DateTime&lt;Utc&gt;,
+}
+
+/// Assess tree quality from node metadata density.
+pub fn assess_tree_quality(root: &amp;A11yNode) -&gt; TreeQuality {
+    let total = count_nodes(root);
+    let with_id = count_with(root, |n| n.resource_id.is_some());
+    let with_desc = count_with(root, |n| {
+        n.content_description.is_some() || n.text.is_some()
+    });
+    let ratio = (with_id + with_desc) as f64 / (total.max(1) * 2) as f64;
+    match ratio {
+        r if r &gt;= 0.6 =&gt; TreeQuality::Good,
+        r if r &gt;= 0.3 =&gt; TreeQuality::Partial,
+        r if r &gt;= 0.1 =&gt; TreeQuality::Poor,
+        _              =&gt; TreeQuality::Unusable,
+    }
+}</code></pre>
+
+<h4>Kotlin bridge</h4>
+<pre><code class="language-kotlin">/**
+ * AccessibilityBridge: event-driven, never polls.
+ * Receives AccessibilityEvents, converts to Rust A11yNode on demand.
+ */
+class WaywiserAccessibilityService : AccessibilityService() {
+
+    // Event-driven: react to changes, don't poll
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        when (event.eventType) {
+            TYPE_WINDOW_STATE_CHANGED  -&gt; onWindowChanged(event)
+            TYPE_WINDOW_CONTENT_CHANGED -&gt; onContentChanged(event)
+            TYPE_VIEW_CLICKED          -&gt; onViewClicked(event)
+            TYPE_NOTIFICATION_STATE_CHANGED -&gt; onNotificationChanged(event)
+        }
+    }
+
+    /** Snapshot current tree — called only for pre-action verification. */
+    fun captureTreeSnapshot(windowId: Int): TreeSnapshot {
+        val root = rootInActiveWindow ?: throw A11yUnavailableException()
+        val flags = root.window?.let { windowFlags(it) }
+        val secureState = if (flags?.hasSecureFlag == true)
+            SecureWindowState.SECURE_BLOCKED
+        else
+            SecureWindowState.NORMAL
+        val rustNode = convertToA11yNode(root)
+        return TreeSnapshot(windowId, root.packageName.toString(),
+            rustNode, assessQuality(rustNode), secureState)
+    }
+
+    /** Execute an action on a resolved node. */
+    fun performNodeAction(nodeId: Long, action: A11yAction): Boolean {
+        val node = findNodeById(nodeId) ?: return false
+        return node.performAction(action.toAndroidAction())
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>2. RiskClassifier <span class="lang-tag">Rust · waywiser-security ext.</span></h3>
+<p>Blueprint §§23–23.5. Five-layer deterministic pipeline. <strong>Invariant: risk may only stay the same or increase as layers execute.</strong></p>
+
+<pre><code class="language-rust">/// Five-layer risk classification pipeline.
+/// Each layer can only maintain or RAISE the current risk floor.
+pub struct RiskClassifier {
+    sensitive_packages:    HashMap&lt;String, PackagePolicy&gt;,
+    automation_profiles:   Vec&lt;AutomationProfile&gt;,
+    semantic_rules:        Vec&lt;SemanticRule&gt;,
+    primitive_floors:      HashMap&lt;PrimitiveActionKind, RiskLevel&gt;,
+}
+
+/// Per-package security policy (Layer 1).
+pub struct PackagePolicy {
+    pub package:    String,
+    pub automation: AutomationPolicy,  // Allow | Block
+    pub floor:      Option&lt;RiskLevel&gt;,
+}
+
+/// Semantic text rule (Layer 3).
+pub struct SemanticRule {
+    pub pattern:  regex::Regex,        // e.g. r"send|reply|publish|post"
+    pub floor:    RiskLevel,           // e.g. Communication
+}
+
+/// Input to the classifier.
+pub struct ClassificationRequest {
+    pub package:      String,
+    pub node:         A11yNode,
+    pub action:       PrimitiveActionKind,
+    pub llm_hint:     Option&lt;LlmRiskHint&gt;,  // non-authoritative, logged only
+}
+
+/// Output from the classifier.
+pub struct ClassificationResult {
+    pub final_risk:     RiskLevel,
+    pub layer_trace:    Vec&lt;LayerDecision&gt;,  // audit trail
+    pub llm_hint_used:  bool,               // always false for final_risk
+    pub approval_mode:  ApprovalMode,       // Auto | AskUser | Block
+}
+
+/// One layer's contribution to the trace.
+pub struct LayerDecision {
+    pub layer:     ClassificationLayer,
+    pub matched:   bool,
+    pub risk_at:   RiskLevel,   // risk AFTER this layer (≥ previous)
+    pub reason:    String,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ClassificationLayer {
+    SensitivePackage,       // Layer 1
+    ReviewedProfile,        // Layer 2
+    SemanticRule,           // Layer 3
+    PrimitiveActionFloor,   // Layer 4
+    UnknownFallback,        // Layer 5
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PrimitiveActionKind {
+    InspectTree,
+    Scroll,
+    OpenApp,
+    Click,
+    Toggle,
+    TypeText,
+    Paste,
+    Gesture,
+}
+
+impl RiskClassifier {
+    /// Classify risk. Layers execute in order 1→5.
+    /// Risk floor can only increase; decrease is a logic error.
+    pub fn classify(&amp;self, req: &amp;ClassificationRequest) -&gt; ClassificationResult {
+        let mut risk = RiskLevel::None;
+        let mut trace = Vec::new();
+
+        // Layer 1: Sensitive-package policy
+        if let Some(policy) = self.sensitive_packages.get(&amp;req.package) {
+            if policy.automation == AutomationPolicy::Block {
+                return ClassificationResult::blocked(
+                    &amp;trace, "sensitive-package: automation blocked"
+                );
+            }
+            if let Some(floor) = policy.floor {
+                risk = risk.max(floor);
+            }
+            trace.push(LayerDecision::hit(ClassificationLayer::SensitivePackage, risk));
+        }
+
+        // Layer 2: Reviewed automation profile
+        if let Some(profile) = self.find_profile(&amp;req.package, &amp;req.node) {
+            risk = risk.max(profile.risk);
+            trace.push(LayerDecision::hit(ClassificationLayer::ReviewedProfile, risk));
+        }
+
+        // Layer 3: Deterministic semantic rules
+        let text = req.node.combined_text();
+        for rule in &amp;self.semantic_rules {
+            if rule.pattern.is_match(&amp;text) {
+                risk = risk.max(rule.floor);
+                trace.push(LayerDecision::hit(ClassificationLayer::SemanticRule, risk));
+                break;
+            }
+        }
+
+        // Layer 4: Primitive action-type floor
+        if let Some(&amp;floor) = self.primitive_floors.get(&amp;req.action) {
+            risk = risk.max(floor);
+            trace.push(LayerDecision::hit(ClassificationLayer::PrimitiveActionFloor, risk));
+        }
+
+        // Layer 5: Unknown fallback
+        if risk == RiskLevel::None {
+            risk = RiskLevel::UiUnclassifiedWrite;
+            trace.push(LayerDecision::hit(ClassificationLayer::UnknownFallback, risk));
+        }
+
+        // Log LLM hint but NEVER let it lower risk
+        if let Some(hint) = &amp;req.llm_hint {
+            tracing::info!(llm_hint = ?hint, final_risk = ?risk,
+                "LLM risk hint logged (non-authoritative)");
+        }
+
+        ClassificationResult {
+            final_risk: risk,
+            layer_trace: trace,
+            llm_hint_used: false,
+            approval_mode: risk.default_approval_mode(),
+        }
+    }
+}</code></pre>
+
+<h4>Default semantic rules</h4>
+<div class="spec-table">
+<table>
+<thead><tr><th>Pattern</th><th>Risk Floor</th></tr></thead>
+<tbody>
+<tr><td><code>send|reply|publish|post|share</code></td><td>Communication</td></tr>
+<tr><td><code>pay|purchase|buy|checkout|transfer|wire</code></td><td>Financial</td></tr>
+<tr><td><code>delete|remove|erase|clear|wipe</code></td><td>Destructive</td></tr>
+<tr><td><code>install|uninstall|permission|grant|revoke</code></td><td>DeviceControl</td></tr>
+<tr><td><code>save|submit|apply|confirm|accept|agree</code></td><td>CrossAppWrite</td></tr>
+</tbody>
+</table>
+</div>
+
+<h4>Default primitive action floors</h4>
+<div class="spec-table">
+<table>
+<thead><tr><th>Action</th><th>Risk Floor</th></tr></thead>
+<tbody>
+<tr><td>InspectTree, Scroll</td><td>ReadPersonal</td></tr>
+<tr><td>OpenApp, Click, Toggle, Gesture</td><td>DeviceControl</td></tr>
+<tr><td>TypeText, Paste</td><td>CrossAppWrite</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>3. UIProfileManager <span class="lang-tag">Rust · waywiser-automation</span></h3>
+<p>Human-reviewed automation mappings for high-value internal apps (§23.2). Profiles are versioned and tied to app version.</p>
+
+<pre><code class="language-rust">/// A reviewed automation profile for a specific app package.
+#[derive(Clone, Debug, Deserialize)]
+pub struct AutomationProfile {
+    pub package:        String,
+    pub app_version:    String,
+    pub reviewed_at:    DateTime&lt;Utc&gt;,
+    pub reviewer:       String,
+    pub nodes:          HashMap&lt;String, NodeProfile&gt;,  // resourceId → profile
+}
+
+/// Mapping of a UI node to its capability effect and risk.
+#[derive(Clone, Debug, Deserialize)]
+pub struct NodeProfile {
+    pub resource_id:    String,
+    pub effect:         CapabilityName,   // e.g. "communication.send"
+    pub risk:           RiskLevel,
+    pub description:    String,
+}
+
+/// Profile registry. Loaded from YAML at startup.
+pub struct ProfileRegistry {
+    profiles: HashMap&lt;String, AutomationProfile&gt;,  // keyed by package
+}
+
+impl ProfileRegistry {
+    /// Load all profiles from config directory.
+    pub fn load_from_dir(path: &amp;Path) -&gt; Result&lt;Self, ProfileError&gt;;
+
+    /// Find a matching profile entry for a node in a given package.
+    pub fn match_node(
+        &amp;self,
+        package: &amp;str,
+        node: &amp;A11yNode,
+    ) -&gt; Option&lt;&amp;NodeProfile&gt; {
+        let profile = self.profiles.get(package)?;
+        let rid = node.resource_id.as_ref()?;
+        profile.nodes.get(rid)
+    }
+
+    /// Check if a profile is stale (app version changed).
+    pub fn is_stale(&amp;self, package: &amp;str, current_version: &amp;str) -&gt; bool {
+        self.profiles.get(package)
+            .map(|p| p.app_version != current_version)
+            .unwrap_or(false)
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>4. TOCTOUProtection <span class="lang-tag">Kotlin + Rust</span></h3>
+<p>Blueprint §24. The UI changes between plan and execution — fingerprint-verify immediately before acting.</p>
+
+<pre><code class="language-rust">/// Fingerprint of a UI node at planning time.
+/// Used to verify the target hasn't changed before executing.
+#[derive(Clone, Debug)]
+pub struct NodeFingerprint {
+    pub package:              String,
+    pub window_id:            i32,
+    pub resource_id:          Option&lt;String&gt;,
+    pub class_name:           String,
+    pub role:                 Option&lt;String&gt;,
+    pub normalized_text:      Option&lt;String&gt;,
+    pub content_description:  Option&lt;String&gt;,
+    pub ancestor_signature:   Vec&lt;String&gt;,  // class names up the tree
+    pub state:                Option&lt;String&gt;,
+    pub approximate_bounds:   Rect,
+}
+
+/// Result of fingerprint comparison.
+#[derive(Debug)]
+pub enum FingerprintMatch {
+    Exact,
+    Partial { mismatches: Vec&lt;FingerprintMismatch&gt; },
+    NoMatch,
+}
+
+#[derive(Debug)]
+pub enum FingerprintMismatch {
+    TextChanged { expected: String, actual: String },
+    BoundsMoved { delta_x: i32, delta_y: i32 },
+    StateChanged { expected: String, actual: String },
+    AncestorChanged,
+    ResourceIdMissing,
+}
+
+/// Policy: what FingerprintMatch is acceptable per risk level?
+pub fn acceptable_match(risk: RiskLevel, m: &amp;FingerprintMatch) -&gt; bool {
+    match (risk, m) {
+        (_, FingerprintMatch::Exact) =&gt; true,
+        (_, FingerprintMatch::NoMatch) =&gt; false,
+        // High risk: require Exact — no partial allowed
+        (RiskLevel::Financial | RiskLevel::Destructive | RiskLevel::Communication,
+         FingerprintMatch::Partial { .. }) =&gt; false,
+        // Lower risk: partial OK if mismatches are cosmetic
+        (_, FingerprintMatch::Partial { mismatches }) =&gt;
+            mismatches.iter().all(|m| m.is_cosmetic()),
+    }
+}
+
+/// Pre-action verification: re-resolve, fingerprint, decide.
+pub fn verify_before_action(
+    bridge: &amp;dyn A11yBridge,
+    planned: &amp;NodeFingerprint,
+    risk: RiskLevel,
+) -&gt; Result&lt;A11yNode, TocTouError&gt; {
+    let snapshot = bridge.capture_tree_snapshot(planned.window_id)?;
+    let resolved = find_by_fingerprint(&amp;snapshot.root, planned)
+        .ok_or(TocTouError::TargetNotFound)?;
+    let current_fp = NodeFingerprint::from_node(&amp;resolved);
+    let comparison = planned.compare(&amp;current_fp);
+    if acceptable_match(risk, &amp;comparison) {
+        Ok(resolved)
+    } else {
+        Err(TocTouError::FingerprintMismatch {
+            planned: planned.clone(),
+            actual: current_fp,
+            comparison,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum TocTouError {
+    TargetNotFound,
+    FingerprintMismatch {
+        planned:    NodeFingerprint,
+        actual:     NodeFingerprint,
+        comparison: FingerprintMatch,
+    },
+    TreeUnavailable,
+    SecureWindow,
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>5. PostActionVerification <span class="lang-tag">Kotlin + Rust</span></h3>
+<p>Blueprint §25. Observe the outcome of a UI action to detect unexpected transitions.</p>
+
+<pre><code class="language-rust">/// Expected outcome of a UI action, defined at planning time.
+#[derive(Clone, Debug)]
+pub struct ExpectedTransition {
+    /// What the current window/activity should look like after the action.
+    pub expected_package:    Option&lt;String&gt;,
+    pub expected_window:     Option&lt;String&gt;,
+    /// Nodes that should appear (e.g. toast, confirmation).
+    pub expected_indicators: Vec&lt;TransitionIndicator&gt;,
+    /// Nodes that should disappear (e.g. the dialog we just confirmed).
+    pub expected_removals:   Vec&lt;String&gt;,  // resource_ids
+    /// Max time to wait for transition before declaring Unknown.
+    pub verification_timeout: Duration,
+}
+
+pub struct TransitionIndicator {
+    pub kind:     IndicatorKind,
+    pub text:     Option&lt;String&gt;,
+}
+
+pub enum IndicatorKind {
+    Toast,
+    Dialog,
+    ActivityChange,
+    ViewAppeared,
+    ViewDisappeared,
+}
+
+/// Post-action verification. Called after every significant UI action.
+pub fn verify_after_action(
+    bridge: &amp;dyn A11yBridge,
+    expected: &amp;ExpectedTransition,
+) -&gt; VerificationResult {
+    // Wait briefly for transition to settle
+    std::thread::sleep(expected.verification_timeout.min(Duration::from_millis(500)));
+
+    let snapshot = match bridge.capture_tree_snapshot_best_effort() {
+        Ok(s)  =&gt; s,
+        Err(_) =&gt; return VerificationResult::Unknown,
+    };
+
+    let indicators_present = expected.expected_indicators.iter()
+        .filter(|ind| find_indicator(&amp;snapshot.root, ind).is_some())
+        .count();
+
+    let removals_gone = expected.expected_removals.iter()
+        .filter(|rid| find_by_resource_id(&amp;snapshot.root, rid).is_none())
+        .count();
+
+    let total_checks = expected.expected_indicators.len()
+        + expected.expected_removals.len();
+
+    if total_checks == 0 {
+        return VerificationResult::Unknown;
+    }
+
+    let passed = indicators_present + removals_gone;
+    let ratio = passed as f64 / total_checks as f64;
+
+    match ratio {
+        r if r &gt;= 0.8 =&gt; VerificationResult::Verified,
+        r if r &gt;= 0.4 =&gt; VerificationResult::Likely,
+        _              =&gt; VerificationResult::Unexpected,
+    }
+}
+
+// VerificationResult defined in shared types (P0):
+// Verified | Likely | Unexpected | Unknown
+//
+// UNEXPECTED → halt all further side effects in the current sequence.
+// Stored in ActionReceipt.verification.</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>6. CrossAppWorkflows <span class="lang-tag">Rust · waywiser-workflows</span></h3>
+<p>Multi-step action sequences across apps. Not true ACID — but explicit tracking of what succeeded and what failed, with compensating actions for reversible steps.</p>
+
+<pre><code class="language-rust">/// A multi-step cross-app workflow.
+pub struct Workflow {
+    pub id:         Uuid,
+    pub name:       String,
+    pub goal_id:    Option&lt;GoalId&gt;,
+    pub steps:      Vec&lt;WorkflowStep&gt;,
+    pub status:     WorkflowStatus,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub updated_at: DateTime&lt;Utc&gt;,
+}
+
+pub struct WorkflowStep {
+    pub index:              usize,
+    pub action_intent:      ActionIntent,
+    pub pre_conditions:     Vec&lt;PreCondition&gt;,
+    pub expected_outcome:   ExpectedTransition,
+    pub actual_outcome:     Option&lt;VerificationResult&gt;,
+    pub receipt:            Option&lt;ActionReceipt&gt;,
+    pub status:             StepStatus,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum WorkflowStatus {
+    Planning,
+    Executing { current_step: usize },
+    Completed,
+    PartiallyCompleted { failed_at: usize },
+    Aborted { reason: AbortReason },
+    RollingBack { from_step: usize },
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum StepStatus {
+    Pending,
+    Executing,
+    Succeeded,
+    Failed,
+    Skipped,
+    RolledBack,
+    UnknownSideEffect,
+}
+
+pub enum AbortReason {
+    VerificationUnexpected,
+    TocTouMismatch,
+    SecurityDenied,
+    UserCancelled,
+    ProcessDeath,
+}
+
+pub struct PreCondition {
+    pub kind:    PreConditionKind,
+    pub check:   String,  // human-readable description for audit
+}
+
+pub enum PreConditionKind {
+    AppInstalled(String),
+    PermissionGranted(Permission),
+    NetworkAvailable,
+    LeaseValid(Uuid),
+    PriorStepSucceeded(usize),
+}
+
+impl Workflow {
+    /// Execute the workflow step-by-step.
+    /// Between each step: verify pre-conditions and post-action outcome.
+    /// On UNEXPECTED: halt and record partial completion.
+    pub async fn execute(
+        &amp;mut self,
+        kernel: &amp;SecurityKernel,
+        bridge: &amp;dyn A11yBridge,
+    ) -&gt; WorkflowResult {
+        for step in &amp;mut self.steps {
+            // 1. Check pre-conditions
+            if !step.check_pre_conditions() {
+                step.status = StepStatus::Failed;
+                self.status = WorkflowStatus::PartiallyCompleted {
+                    failed_at: step.index
+                };
+                return WorkflowResult::Partial;
+            }
+
+            // 2. Run through full ActionPipeline
+            let receipt = kernel.process_intent(&amp;step.action_intent).await;
+
+            // 3. Post-action verification
+            let verification = verify_after_action(bridge, &amp;step.expected_outcome);
+            step.actual_outcome = Some(verification);
+            step.receipt = Some(receipt);
+
+            match verification {
+                VerificationResult::Unexpected =&gt; {
+                    step.status = StepStatus::Failed;
+                    self.status = WorkflowStatus::Aborted {
+                        reason: AbortReason::VerificationUnexpected
+                    };
+                    // HALT — do not execute further steps
+                    return WorkflowResult::Aborted;
+                }
+                VerificationResult::Unknown =&gt; {
+                    step.status = StepStatus::UnknownSideEffect;
+                    // Continue with caution — next step checks pre-conditions
+                }
+                _ =&gt; {
+                    step.status = StepStatus::Succeeded;
+                }
+            }
+        }
+        self.status = WorkflowStatus::Completed;
+        WorkflowResult::Completed
+    }
+
+    /// Attempt to roll back completed reversible steps.
+    pub async fn rollback(
+        &amp;mut self,
+        kernel: &amp;SecurityKernel,
+    ) -&gt; RollbackResult {
+        let mut rolled = 0;
+        for step in self.steps.iter_mut().rev() {
+            if step.status != StepStatus::Succeeded { continue; }
+            if let Some(receipt) = &amp;step.receipt {
+                if receipt.reversible &amp;&amp; receipt.undo_token.is_some() {
+                    // Execute compensating action
+                    kernel.execute_undo(receipt).await;
+                    step.status = StepStatus::RolledBack;
+                    rolled += 1;
+                }
+            }
+        }
+        RollbackResult { steps_rolled_back: rolled }
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>7. AdvancedDelegation <span class="lang-tag">Rust · waywiser-delegation ext.</span></h3>
+<p>Extends P1 AgentSupervisor with orchestrator agents, verification agents, multi-agent coordination.</p>
+
+<pre><code class="language-rust">/// Extended agent class (P3 adds Orchestrator and Verification).
+/// P1 defined: Primary, Leaf, CognitionWorker.
+#[derive(Copy, Clone, Debug)]
+pub enum AgentClass {
+    // — from P1 —
+    Primary,
+    Leaf,
+    CognitionWorker,
+    // — P3 additions —
+    /// May create child agents within budget. Max depth still 2.
+    Orchestrator,
+    /// Can inspect evidence, CANNOT mutate external state.
+    /// Read-only capabilities only.
+    Verification,
+}
+
+/// P3 extension: capability inheritance rules per class.
+impl AgentClass {
+    pub fn capability_filter(&amp;self) -&gt; CapabilityFilter {
+        match self {
+            Self::Verification =&gt; CapabilityFilter::ReadOnly,
+            Self::CognitionWorker =&gt; CapabilityFilter::InternalOnly,
+            Self::Leaf =&gt; CapabilityFilter::InheritParent,
+            Self::Orchestrator =&gt; CapabilityFilter::InheritParent,
+            Self::Primary =&gt; CapabilityFilter::Full,
+        }
+    }
+
+    pub fn can_delegate(&amp;self) -&gt; bool {
+        matches!(self, Self::Primary | Self::Orchestrator)
+    }
+}
+
+/// Multi-agent coordination: shared work graph conflict detection.
+pub struct AgentCoordinator {
+    active_agents: HashMap&lt;AgentId, AgentState&gt;,
+    work_locks:    HashMap&lt;WorkItemId, AgentId&gt;,
+}
+
+impl AgentCoordinator {
+    /// Claim a work item. Prevents two agents from working on the same item.
+    pub fn claim_work_item(
+        &amp;mut self,
+        agent: AgentId,
+        item: WorkItemId,
+    ) -&gt; Result&lt;(), ConflictError&gt; {
+        if let Some(holder) = self.work_locks.get(&amp;item) {
+            if *holder != agent {
+                return Err(ConflictError::AlreadyClaimed {
+                    item, holder: *holder
+                });
+            }
+        }
+        self.work_locks.insert(item, agent);
+        Ok(())
+    }
+
+    /// Enforce delegation depth. Invariant: max 2 levels.
+    pub fn check_depth(&amp;self, parent: AgentId) -&gt; Result&lt;(), DepthError&gt; {
+        let depth = self.agent_depth(parent);
+        if depth &gt;= 2 {
+            Err(DepthError::MaxDepthExceeded { current: depth })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Enforce budget cascading: child ≤ remaining parent budget.
+    pub fn allocate_child_budget(
+        &amp;self,
+        parent: AgentId,
+        requested: &amp;DelegationBudget,
+    ) -&gt; Result&lt;DelegationBudget, BudgetError&gt; {
+        let parent_remaining = self.remaining_budget(parent)?;
+        if !parent_remaining.can_cover(requested) {
+            return Err(BudgetError::InsufficientParentBudget);
+        }
+        Ok(requested.clone().cap_at(&amp;parent_remaining))
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>8. ApprovalLeases — Full Model <span class="lang-tag">Rust · waywiser-security ext.</span></h3>
+<p>Blueprint §21. Extends P1 basic leases to the full scoped autonomy model.</p>
+
+<pre><code class="language-rust">/// Full approval lease (P3 extension of P1 basic lease).
+pub struct ApprovalLease {
+    pub id:               Uuid,
+    pub capability:       CapabilityName,
+    pub scope:            LeaseScope,
+    pub constraints:      LeaseConstraints,
+    pub valid_until:      DateTime&lt;Utc&gt;,
+    pub max_executions:   Option&lt;u32&gt;,
+    pub executions_used:  u32,
+    pub granted_by:       GrantSource,
+    pub granted_at:       DateTime&lt;Utc&gt;,
+    pub last_used_at:     Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub revoked:          bool,
+    pub audit_trail:      Vec&lt;LeaseUseRecord&gt;,
+}
+
+pub struct LeaseScope {
+    pub account:          Option&lt;String&gt;,
+    pub context_filters:  HashMap&lt;String, serde_json::Value&gt;,
+}
+
+pub struct LeaseConstraints {
+    pub forbid: Vec&lt;String&gt;,     // e.g. ["delete"]
+    pub allow:  Option&lt;Vec&lt;String&gt;&gt;,  // if Some, allowlist mode
+}
+
+pub enum GrantSource {
+    UserExplicit,
+    BiometricConfirm,
+    SystemDefault,
+}
+
+pub struct LeaseUseRecord {
+    pub intent_id:    Uuid,
+    pub used_at:      DateTime&lt;Utc&gt;,
+    pub arguments:    serde_json::Value,
+    pub result:       ActionStatus,
+}
+
+impl ApprovalLease {
+    /// Evaluate whether this lease authorizes a given intent.
+    pub fn evaluate(&amp;self, intent: &amp;ActionIntent, now: DateTime&lt;Utc&gt;) -&gt; LeaseDecision {
+        if self.revoked {
+            return LeaseDecision::Denied(LeaseReason::Revoked);
+        }
+        if now &gt;= self.valid_until {
+            return LeaseDecision::Denied(LeaseReason::Expired);
+        }
+        if let Some(max) = self.max_executions {
+            if self.executions_used &gt;= max {
+                return LeaseDecision::Denied(LeaseReason::BudgetExhausted);
+            }
+        }
+        if !self.scope.matches(intent) {
+            return LeaseDecision::Denied(LeaseReason::OutOfScope);
+        }
+        if !self.constraints.permits(intent) {
+            return LeaseDecision::Denied(LeaseReason::ConstraintViolation);
+        }
+        LeaseDecision::Authorized
+    }
+
+    /// Record a use. Increments counter, appends audit entry.
+    pub fn record_use(&amp;mut self, intent_id: Uuid, args: &amp;serde_json::Value, result: ActionStatus) {
+        self.executions_used += 1;
+        self.last_used_at = Some(Utc::now());
+        self.audit_trail.push(LeaseUseRecord {
+            intent_id,
+            used_at: Utc::now(),
+            arguments: args.clone(),
+            result,
+        });
+    }
+
+    /// Revoke immediately. In-flight actions complete; no new ones.
+    pub fn revoke(&amp;mut self) {
+        self.revoked = true;
+    }
+}
+
+pub enum LeaseDecision {
+    Authorized,
+    Denied(LeaseReason),
+}
+
+pub enum LeaseReason {
+    Revoked,
+    Expired,
+    BudgetExhausted,
+    OutOfScope,
+    ConstraintViolation,
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>9. ActionPipeline — Full Lifecycle <span class="lang-tag">Rust · waywiser-security</span></h3>
+<p>Blueprint §§17–20. The complete intent-to-receipt pipeline, bringing every P3 security component together.</p>
+
+<h4>Pipeline state machine</h4>
+<pre><code class="language-rust">/// Lifecycle states of an ActionIntent through the security pipeline.
+///
+///   Proposed → Authorized → Executing → Verifying → Completed
+///                 │              │            │
+///                 ├→ Denied      ├→ Failed    ├→ UnknownSideEffect
+///                 │              └→ Crashed   └→ Unexpected
+///                 └→ Escalated (ask user)
+#[derive(Copy, Clone, Debug)]
+pub enum PipelineStage {
+    Proposed,
+    CapabilityCheck,
+    RiskClassification,
+    PolicyCheck,
+    LeaseCheck,
+    OsPermissionCheck,
+    UserApproval,
+    Authorized,
+    Executing,
+    Verifying,
+    Completed,
+    Denied { reason: String },
+    Failed { error: String },
+    UnknownSideEffect,
+}
+
+/// The full pipeline executor.
+pub struct ActionPipeline {
+    capabilities:   CapabilityRegistry,     // from P1
+    classifier:     RiskClassifier,         // this phase
+    policy:         WaywiserPolicy,         // from P1
+    leases:         LeaseStore,             // this phase (full)
+    os_permissions: OsPermissionChecker,    // from P1
+}
+
+impl ActionPipeline {
+    /// Process an ActionIntent through the full security pipeline.
+    /// Returns an ActionReceipt (always — even for denials).
+    pub async fn process(
+        &amp;self,
+        intent: ActionIntent,
+        bridge: Option&lt;&amp;dyn A11yBridge&gt;,
+        user_prompt: &amp;dyn UserApprovalPrompt,
+    ) -&gt; ActionReceipt {
+        let mut stage = PipelineStage::Proposed;
+        let started_at = Utc::now();
+
+        // 1. Capability exists?
+        stage = PipelineStage::CapabilityCheck;
+        let spec = match self.capabilities.get(&amp;intent.capability) {
+            Some(s) =&gt; s,
+            None =&gt; return ActionReceipt::denied(
+                &amp;intent, started_at, "unknown capability"
+            ),
+        };
+
+        // 2. Risk classification (5-layer for UI actions, spec-declared for others)
+        stage = PipelineStage::RiskClassification;
+        let risk = if let Some(bridge) = bridge {
+            // UI action: run 5-layer classifier
+            let req = ClassificationRequest::from_intent(&amp;intent, bridge);
+            self.classifier.classify(&amp;req).final_risk
+        } else {
+            // Non-UI: use capability-declared risk
+            spec.risk
+        };
+
+        // 3. Waywiser policy check
+        stage = PipelineStage::PolicyCheck;
+        if let Err(deny) = self.policy.check(&amp;intent, &amp;spec, risk) {
+            return ActionReceipt::denied(&amp;intent, started_at, &amp;deny.reason);
+        }
+
+        // 4. Approval lease check
+        stage = PipelineStage::LeaseCheck;
+        let lease_ok = self.leases.find_valid_lease(
+            &amp;intent.capability, &amp;intent
+        );
+
+        // 5. OS permission check
+        stage = PipelineStage::OsPermissionCheck;
+        if let Err(e) = self.os_permissions.check_for(&amp;spec) {
+            return ActionReceipt::denied(&amp;intent, started_at,
+                &amp;format!("OS permission missing: {e}"));
+        }
+
+        // 6. User approval if required and no valid lease
+        stage = PipelineStage::UserApproval;
+        if lease_ok.is_none() &amp;&amp; risk.requires_user_approval() {
+            match user_prompt.request_approval(&amp;intent, risk).await {
+                Approval::Granted =&gt; {}
+                Approval::GrantedWithLease(lease) =&gt; {
+                    self.leases.store(lease);
+                }
+                Approval::Denied =&gt; {
+                    return ActionReceipt::denied(
+                        &amp;intent, started_at, "user denied"
+                    );
+                }
+            }
+        }
+
+        // Record lease use if applicable
+        if let Some(lease) = lease_ok {
+            self.leases.record_use(lease.id, &amp;intent);
+        }
+
+        // 7. Execute — this is the side-effect boundary
+        stage = PipelineStage::Executing;
+
+        // PERSIST intent as EXECUTING before dispatch (crash safety)
+        self.persist_stage(&amp;intent, PipelineStage::Executing);
+
+        let exec_result = match spec.execution_mode {
+            ExecutionMode::Local =&gt; self.execute_local(&amp;intent, &amp;spec).await,
+            ExecutionMode::UiAutomation =&gt; {
+                self.execute_ui(&amp;intent, &amp;spec, bridge.unwrap()).await
+            }
+            ExecutionMode::Remote =&gt; self.execute_remote(&amp;intent, &amp;spec).await,
+        };
+
+        // 8. Verification
+        stage = PipelineStage::Verifying;
+        let verification = match (&amp;exec_result, bridge) {
+            (Ok(_), Some(b)) =&gt; verify_after_action(b, &amp;intent.expected_transition()),
+            (Ok(_), None)    =&gt; VerificationResult::Unknown,
+            (Err(_), _)      =&gt; VerificationResult::Unknown,
+        };
+
+        // 9. Build receipt
+        let status = match exec_result {
+            Ok(result) =&gt; ActionStatus::Completed,
+            Err(ExecError::Crashed) =&gt; ActionStatus::UnknownSideEffect,
+            Err(ExecError::Failed(e)) =&gt; ActionStatus::Failed(e),
+        };
+
+        ActionReceipt {
+            intent_id:          intent.id,
+            capability:         intent.capability.clone(),
+            started_at,
+            completed_at:       Some(Utc::now()),
+            status,
+            external_reference: exec_result.ok().and_then(|r| r.external_ref),
+            reversible:         spec.reversible,
+            undo_token:         exec_result.ok().and_then(|r| r.undo_token),
+            verification,
+            result_summary:     exec_result.ok().map(|r| r.summary),
+        }
+    }
+}
+
+/// Replay policy enforcement on crash recovery.
+impl ActionPipeline {
+    pub fn recover_after_crash(
+        &amp;self,
+        pending: Vec&lt;ActionIntent&gt;,
+    ) -&gt; Vec&lt;RecoveryAction&gt; {
+        pending.into_iter().map(|intent| {
+            let spec = self.capabilities.get(&amp;intent.capability);
+            match spec.map(|s| s.replay_policy) {
+                Some(ReplayPolicy::SafeReplay) =&gt;
+                    RecoveryAction::Retry(intent),
+                Some(ReplayPolicy::NeverReplay) =&gt;
+                    RecoveryAction::MarkFailed(intent, "never-replay policy"),
+                Some(ReplayPolicy::VerifyBeforeRetry) =&gt;
+                    RecoveryAction::VerifyThenDecide(intent),
+                None =&gt;
+                    RecoveryAction::MarkFailed(intent, "unknown capability"),
+            }
+        }).collect()
+    }
+}
+
+pub enum RecoveryAction {
+    Retry(ActionIntent),
+    MarkFailed(ActionIntent, &amp;'static str),
+    VerifyThenDecide(ActionIntent),
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>10. RemoteExecution <span class="lang-tag">Rust · waywiser-remote — OPTIONAL</span></h3>
+<p>Optional remote execution nodes for delegating heavy workloads. Ships after the rest of P3. Remote nodes are NOT trusted more than local — same security kernel applies.</p>
+
+<pre><code class="language-rust">/// A remote compute node that can execute capabilities.
+pub struct RemoteNode {
+    pub id:             Uuid,
+    pub name:           String,
+    pub endpoint:       String,
+    pub capabilities:   Vec&lt;CapabilityName&gt;,
+    pub status:         RemoteNodeStatus,
+    pub last_heartbeat: DateTime&lt;Utc&gt;,
+    pub auth_token:     String,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum RemoteNodeStatus {
+    Online,
+    Degraded,
+    Offline,
+}
+
+/// Remote capability — proxied through the local security kernel.
+/// Security is NOT delegated to the remote node.
+pub struct RemoteExecutor {
+    nodes:  Vec&lt;RemoteNode&gt;,
+    kernel: Arc&lt;SecurityKernel&gt;,
+}
+
+impl RemoteExecutor {
+    /// Execute on remote. Full local authorization first.
+    pub async fn execute(
+        &amp;self,
+        intent: &amp;ActionIntent,
+    ) -&gt; Result&lt;ActionReceipt, RemoteError&gt; {
+        // Local authorization FIRST (same pipeline as local execution)
+        // Only the execution step is delegated to remote.
+        let node = self.find_capable_node(&amp;intent.capability)?;
+        if node.status == RemoteNodeStatus::Offline {
+            return Err(RemoteError::NodeOffline(node.id));
+        }
+
+        let result = self.dispatch_to_node(&amp;node, intent).await;
+
+        match result {
+            Ok(receipt) =&gt; {
+                // Verify result locally
+                Ok(receipt)
+            }
+            Err(RemoteError::Disconnected) =&gt; {
+                // In-flight → UNKNOWN_SIDE_EFFECT
+                Ok(ActionReceipt {
+                    status: ActionStatus::UnknownSideEffect,
+                    verification: VerificationResult::Unknown,
+                    ..ActionReceipt::from_intent(intent)
+                })
+            }
+            Err(e) =&gt; Err(e),
+        }
+    }
+}</code></pre>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h3>Acceptance Criteria</h3>
+<div class="acceptance-criteria">
+<ol>
+<li><strong>ECM provisioned:</strong> AccessibilityService enabled via MDM on target device → tree inspection works, nodes readable for all non-secure apps.</li>
+<li><strong>Banking blocked:</strong> Automation attempted on <code>com.example.bank</code> → RiskClassifier returns <code>Block</code>, no action taken, no override possible regardless of lease or user request.</li>
+<li><strong>Reviewed profile enforced:</strong> Company mail send button → reviewed profile maps to <code>Communication</code> risk → user approval required → approved → action executes → receipt logged.</li>
+<li><strong>Unknown app fallback:</strong> Click on unknown app → classified as <code>DeviceControl</code> → user prompted → audit trail records classification layer trace.</li>
+<li><strong>Risk monotonicity:</strong> 500 synthetic UI actions through classifier → risk NEVER decreases between layers. Automated property test.</li>
+<li><strong>TOCTOU protection:</strong> Target button moves between plan and execution → fingerprint mismatch → abort with <code>TocTouError::FingerprintMismatch</code>, no side effect executed.</li>
+<li><strong>High-risk TOCTOU strictness:</strong> Financial-risk action with <code>FingerprintMatch::Partial</code> → rejected (exact match required for high risk).</li>
+<li><strong>Post-action halt on Unexpected:</strong> Click send → unexpected error dialog appears → <code>VerificationResult::Unexpected</code> → all further workflow steps halted immediately.</li>
+<li><strong>Cross-app workflow:</strong> "Reschedule dentist" → open calendar → find event → modify → verify → receipt with undo token. Receipts match actual calendar state.</li>
+<li><strong>Workflow rollback:</strong> Workflow step 3 of 5 fails → steps 1–2 (reversible) rolled back via undo tokens → rolled-back steps marked <code>RolledBack</code>.</li>
+<li><strong>Lease lifecycle:</strong> Granted for <code>calendar.update</code> until 18:00, max 5 → works 5 times → 6th denied with <code>BudgetExhausted</code> → re-approval required.</li>
+<li><strong>Lease expiry:</strong> Lease expires → immediate denial, clean <code>LeaseReason::Expired</code>. No grace period.</li>
+<li><strong>Self-improvement blocked:</strong> Learned skill attempts <code>waywiser.security.grant_capability</code> → deterministic validator rejects, invariant I10 enforced.</li>
+<li><strong>Delegation depth:</strong> Orchestrator creates 2 leaf agents → succeeds. Leaf attempts to delegate → denied with <code>DepthError::MaxDepthExceeded</code>.</li>
+<li><strong>Budget cascading:</strong> Parent has 1000 tokens remaining → child requests 1500 → capped at 1000.</li>
+<li><strong>Verification agent read-only:</strong> Verification agent attempts a write capability → denied by <code>CapabilityFilter::ReadOnly</code>.</li>
+<li><strong>Crash recovery:</strong> Process crash after calendar update dispatch → recovery finds <code>PipelineStage::Executing</code> → <code>VerifyBeforeRetry</code> policy → verifies calendar state → correct state determined, receipt updated.</li>
+<li><strong>FLAG_SECURE:</strong> Secure window detected → <code>SecureWindowState::SecureBlocked</code> → no fabricated visual context, automation gracefully declined.</li>
+<li><strong>Idempotency:</strong> Same <code>idempotency_key</code> submitted twice → second execution skipped, original receipt returned.</li>
+<li><strong>Soak test:</strong> 100 cross-app actions over 8 hours → all receipts match actual app outcomes. No leaked JNI refs, no memory growth, no orphaned intents.</li>
+</ol>
+</div>
+
+</div>

@@ -1,0 +1,46 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pi-types",
+    "crates/pi-core",
+    "crates/pi-inference",
+    "crates/pi-session",
+    "crates/waywiser-core",
+    "crates/waywiser-security",
+    "crates/waywiser-work",
+    "crates/waywiser-delegation",
+    "crates/waywiser-proactive",
+    "crates/waywiser-context",
+    "crates/waywiser-attention",
+    "crates/waywiser-notifications",
+    "crates/waywiser-automation",
+    "crates/waywiser-workflows",
+    "crates/waywiser-ffi",
+    "crates/waywiser-tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+rust-version = "1.98"
+
+[workspace.dependencies]
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+tracing = "0.1"
+regex = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio-util = "0.7"
+
+[profile.release]
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"

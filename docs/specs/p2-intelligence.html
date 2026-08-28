@@ -1,0 +1,1021 @@
+<div class="phase-section" id="phase-p2">
+
+<h2>P2: Intelligence <span class="phase-badge">Months 9&ndash;14</span></h2>
+
+<div class="phase-meta">
+  <p><strong>Scope:</strong> Richer context, smarter assistant &mdash; blueprint &sect;79 V2 Intelligence</p>
+  <p><strong>Entry criteria:</strong> P1 complete; PA is in daily internal use; work graph, delegation, and proactive engine operational</p>
+  <p><strong>Exit criteria:</strong> Context-aware, learning, proactively intelligent assistant with edge inference and semantic memory</p>
+  <p><strong>Team:</strong> 4 senior engineers, ~4&ndash;6 months</p>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>1. ContextGraph <span class="crate-tag">waywiser-context</span></h3>
+
+<p>Structured ephemeral working memory of device state. Blueprint &sect;&sect;12&ndash;13. Android callbacks enter an observation bus; deterministic reducers update typed graph nodes. The graph is <em>not</em> permanent history.</p>
+
+<h4>Core types</h4>
+
+<pre><code class="language-rust">/// A single domain node in the context graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ContextDomain {
+    User(UserContext),
+    Device(DeviceContext),
+    Environment(EnvironmentContext),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserContext {
+    pub activity: Option&lt;ActivityState&gt;,       // walking, driving, stationary, …
+    pub audio_route: Option&lt;AudioRoute&gt;,       // speaker, headphones, bluetooth, …
+    pub place_context: Option&lt;PlaceContext&gt;,    // home, office, commute, unknown
+    pub next_event: Option&lt;UpcomingEvent&gt;,
+    pub attention_state: Option&lt;AttentionState&gt;, // idle, focused, dnd
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceContext {
+    pub battery_pct: u8,
+    pub charging: bool,
+    pub network: NetworkState,     // wifi, cellular, offline
+    pub thermal: ThermalState,     // nominal, elevated, throttling, critical
+    pub screen: ScreenState,      // on, off, locked
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnvironmentContext {
+    pub time_of_day: TimeOfDay,   // morning, afternoon, evening, night
+    pub ambient_noise: Option&lt;NoiseLevel&gt;,
+    pub weather: Option&lt;WeatherSummary&gt;,
+}
+
+/// Typed wrapper around a ContextDomain node with metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextNode {
+    pub domain: ContextDomain,
+    pub updated_at: DateTime&lt;Utc&gt;,
+    pub expires_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub source: ObservationSource,
+}
+
+/// The full graph: a flat map of domain nodes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextGraph {
+    nodes: HashMap&lt;ContextDomainKey, ContextNode&gt;,
+}
+
+/// Immutable snapshot for projection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextGraphSnapshot {
+    pub nodes: Vec&lt;ContextNode&gt;,
+    pub captured_at: DateTime&lt;Utc&gt;,
+}
+</code></pre>
+
+<h4>Observation bus &amp; reducers</h4>
+
+<pre><code class="language-rust">/// Receives observations from the Android layer via FFI.
+pub struct ObservationBus {
+    subscribers: Vec&lt;Box&lt;dyn DeterministicReducer&gt;&gt;,
+}
+
+impl ObservationBus {
+    /// Dispatch an observation to all registered reducers.
+    pub fn publish(&amp;self, obs: &amp;Observation, graph: &amp;mut ContextGraph) {
+        for reducer in &amp;self.subscribers {
+            reducer.reduce(obs, graph);
+        }
+    }
+}
+
+/// Deterministic reducer: pure function from observation to graph mutation.
+/// No LLM calls. No network. No side effects.
+pub trait DeterministicReducer: Send + Sync {
+    /// Which observation kinds this reducer handles.
+    fn handles(&amp;self) -&gt; &amp;[ObservationKind];
+
+    /// Apply the observation to the graph. Must be deterministic and fast.
+    fn reduce(&amp;self, obs: &amp;Observation, graph: &amp;mut ContextGraph);
+}
+</code></pre>
+
+<h4>Flow</h4>
+<pre><code>Android callback (Kotlin)
+    │
+    ▼
+Observation constructed (via FFI)
+    │
+    ▼
+ObservationBus.publish()
+    │
+    ▼
+DeterministicReducer.reduce()  ← one per domain
+    │
+    ▼
+ContextGraph updated (in-memory)
+    │
+    ▼
+Temporal decay task expires stale nodes
+</code></pre>
+
+<h4>Temporal decay</h4>
+
+<div class="spec-table">
+<table>
+  <thead><tr><th>Domain</th><th>Default TTL</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>User.activity</td><td>5 min</td><td>"walking" expires if no update</td></tr>
+    <tr><td>User.next_event</td><td>Until event passes</td><td>Removed after event time</td></tr>
+    <tr><td>Device.battery_pct</td><td>10 min</td><td>Refreshed by periodic poll</td></tr>
+    <tr><td>Device.thermal</td><td>2 min</td><td>Fast decay for transient spikes</td></tr>
+    <tr><td>Environment.weather</td><td>30 min</td><td>Infrequent update acceptable</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Testing</h4>
+<ul>
+  <li>Unit: feed known observations, assert graph state matches expected snapshot</li>
+  <li>Property: reducers are idempotent — same observation twice = same graph state</li>
+  <li>Decay: advance time, assert expired nodes removed</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>2. AttentionGovernor <span class="crate-tag">waywiser-attention</span></h3>
+
+<p>Deterministic policy engine deciding whether information should affect user attention. Blueprint &sect;&sect;14&ndash;14.3. Neural hints may escalate but <strong>cannot suppress</strong>.</p>
+
+<h4>Decision enum (shared type, defined in P0)</h4>
+<pre><code class="language-rust">// Already defined in shared foundations:
+// pub enum AttentionDecision { Drop, Batch, Silent, Notify, HeadsUp, Voice, Urgent }
+</code></pre>
+
+<h4>Policy types</h4>
+<pre><code class="language-rust">/// Per-source attention rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttentionRule {
+    pub source: AttentionSource,
+    pub floor: Option&lt;AttentionDecision&gt;,    // minimum attention level
+    pub ceiling: Option&lt;AttentionDecision&gt;,  // maximum attention level
+    pub priority: u8,                        // rule precedence (lower = higher)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AttentionSource {
+    Contact(ContactId),
+    ContactGroup(ContactGroupId),  // "family", "vip"
+    AppChannel { package: String, channel_id: String },
+    AppPackage(String),
+    NotificationCategory(String),
+    SystemChannel(SystemChannel),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemChannel {
+    AlarmClock,
+    IncomingCall,
+    SecurityAlert,
+    DeviceWarning,
+}
+
+/// Hint from edge model — advisory only, cannot lower floor.
+#[derive(Debug, Clone)]
+pub struct EdgeHint {
+    pub suggested: AttentionDecision,
+    pub confidence: f32,          // 0.0–1.0
+    pub reasoning: Option&lt;String&gt;, // structured rationale
+}
+
+/// Full attention policy configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AttentionPolicy {
+    pub rules: Vec&lt;AttentionRule&gt;,
+    pub default_decision: AttentionDecision,
+    pub suppression_threshold: f32, // min edge confidence to suppress (high)
+    pub escalation_threshold: f32,  // min edge confidence to escalate (low)
+}
+</code></pre>
+
+<h4>Governor</h4>
+<pre><code class="language-rust">pub struct AttentionGovernor {
+    policy: AttentionPolicy,
+}
+
+impl AttentionGovernor {
+    /// Evaluate attention for a signal.
+    /// Pipeline: floor → ceiling → deterministic match → edge hint → final.
+    pub fn evaluate(
+        &amp;self,
+        signal: &amp;AttentionSignal,
+        edge_hint: Option&lt;&amp;EdgeHint&gt;,
+        context: &amp;ContextGraphSnapshot,
+    ) -&gt; AttentionResult {
+        // 1. Find matching floor (strongest wins)
+        let floor = self.resolve_floor(signal);
+
+        // 2. Find matching ceiling
+        let ceiling = self.resolve_ceiling(signal);
+
+        // 3. Deterministic pattern match → base decision
+        let base = self.deterministic_classify(signal, context);
+
+        // 4. Apply edge hint (ONLY escalation; suppression requires
+        //    confidence > suppression_threshold AND no floor violation)
+        let adjusted = match edge_hint {
+            Some(hint) =&gt; self.apply_hint(base, hint, floor),
+            None =&gt; base,
+        };
+
+        // 5. Clamp to [floor, ceiling]
+        let final_decision = self.clamp(adjusted, floor, ceiling);
+
+        AttentionResult {
+            decision: final_decision,
+            floor_applied: floor,
+            ceiling_applied: ceiling,
+            edge_hint_effect: edge_hint.map(|h| h.suggested),
+            source_rule: self.matched_rule(signal),
+        }
+    }
+
+    /// Suppression asymmetry: escalation easier than suppression.
+    fn apply_hint(
+        &amp;self,
+        base: AttentionDecision,
+        hint: &amp;EdgeHint,
+        floor: Option&lt;AttentionDecision&gt;,
+    ) -&gt; AttentionDecision {
+        if hint.suggested &gt; base {
+            // Escalation: lower confidence threshold
+            if hint.confidence &gt;= self.policy.escalation_threshold {
+                hint.suggested
+            } else {
+                base
+            }
+        } else if hint.suggested &lt; base {
+            // Suppression: higher confidence threshold + floor check
+            if hint.confidence &gt;= self.policy.suppression_threshold {
+                // NEVER suppress below floor
+                match floor {
+                    Some(f) if hint.suggested &lt; f =&gt; f,
+                    _ =&gt; hint.suggested,
+                }
+            } else {
+                base // insufficient confidence to suppress
+            }
+        } else {
+            base
+        }
+    }
+}
+
+pub struct AttentionResult {
+    pub decision: AttentionDecision,
+    pub floor_applied: Option&lt;AttentionDecision&gt;,
+    pub ceiling_applied: Option&lt;AttentionDecision&gt;,
+    pub edge_hint_effect: Option&lt;AttentionDecision&gt;,
+    pub source_rule: Option&lt;AttentionRule&gt;,
+}
+</code></pre>
+
+<h4>High-consequence floors (hardcoded, not configurable)</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Source</th><th>Minimum</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>User-designated important contacts</td><td>Notify</td><td>Explicit user preference</td></tr>
+    <tr><td>Known family contacts</td><td>Notify</td><td>Safety</td></tr>
+    <tr><td>Android alarm channels</td><td>HeadsUp</td><td>User-set alarms are intentional</td></tr>
+    <tr><td>Repeated incoming calls (3+ in 5 min)</td><td>Urgent</td><td>Emergency pattern</td></tr>
+    <tr><td>Security/system alerts</td><td>Notify</td><td>Device safety</td></tr>
+    <tr><td>Deadlines (&lt; 15 min)</td><td>HeadsUp</td><td>Time-critical</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Testing</h4>
+<ul>
+  <li>Unit: for each floor source, verify edge hint with <code>Drop</code> cannot suppress below floor</li>
+  <li>Property: <code>evaluate()</code> output &ge; floor, &le; ceiling for every input</li>
+  <li>Escalation: edge hint escalates at low confidence threshold; suppression requires high threshold</li>
+  <li>Fuzz: random signals + random hints never produce decision below any matched floor</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>3. EdgeAccelerator <span class="crate-tag">Kotlin: waywiser-edge</span></h3>
+
+<p>Optional on-device inference for bounded utility tasks. Blueprint &sect;&sect;51&ndash;56. Research correction: <strong>Gemma 4 E2B via LiteRT-LM</strong>, not llama.cpp/Vulkan (Mali driver instability on Exynos).</p>
+
+<h4>Kotlin interface</h4>
+<pre><code class="language-kotlin">enum class ResidencyState { COLD, WARM, HOT }
+
+data class EdgeInferenceResult(
+    val output: String,
+    val structuredOutput: JsonObject?,  // parsed JSON if constrained decoding
+    val latencyMs: Long,
+    val tokensGenerated: Int,
+)
+
+interface EdgeModelManager {
+    val residencyState: StateFlow&lt;ResidencyState&gt;
+
+    /** Load model into memory. COLD → WARM → HOT. */
+    suspend fun warmUp()
+
+    /** Unload model. HOT/WARM → COLD. */
+    suspend fun unload()
+
+    /** Run bounded inference with constrained structured output. */
+    suspend fun infer(
+        prompt: String,
+        schema: JsonSchema?,           // constrained decoding schema
+        maxTokens: Int = 256,
+    ): EdgeInferenceResult
+
+    /** Current memory usage in bytes. */
+    fun memoryUsageBytes(): Long
+}
+
+/** Lifecycle-aware residency policy. */
+class EdgeResidencyPolicy(
+    private val manager: EdgeModelManager,
+    private val contextGraph: ContextGraphBridge,  // FFI to Rust
+) {
+    fun onForegroundConversation()  { manager.warmUp() }
+    fun onCameraSessionStart()     { manager.warmUp() }
+    fun onScreenOff()              { scheduleUnload(gracePeriodMs = 60_000) }
+    fun onThermalThrottle()        { manager.unload() }
+    fun onMemoryPressure()         { manager.unload() /* immediate */ }
+    fun onTrimMemory(level: Int) {
+        if (level >= TRIM_MEMORY_RUNNING_LOW) manager.unload()
+    }
+}
+</code></pre>
+
+<h4>Model configuration</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Model</th><th>Role</th><th>Params</th><th>Memory</th><th>Speed</th><th>Runtime</th></tr></thead>
+  <tbody>
+    <tr><td>Gemma 4 E2B</td><td>Primary utility</td><td>2.3B eff.</td><td>676 MB peak</td><td>~40 tok/s (S21+ GPU)</td><td>LiteRT-LM (OpenCL)</td></tr>
+    <tr><td>FunctionGemma 270M</td><td>Lightweight router</td><td>270M</td><td>~350 MB</td><td>~126 tok/s (CPU)</td><td>LiteRT</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Invariant enforcement (I6)</h4>
+<ul>
+  <li>Edge model output is typed as <code>EdgeHint</code> &mdash; never <code>AgentMessage</code></li>
+  <li>No <code>ActionIntent</code> can originate from edge inference alone</li>
+  <li>Edge model cannot call <code>PermissionService</code> or <code>CapabilityRegistry</code></li>
+  <li>Edge-produced classifications carry <code>Provenance::EdgeModel</code> &mdash; deterministic code decides ceiling</li>
+</ul>
+
+<h4>Memory budget (S21+, 8 GB)</h4>
+<pre><code>Android OS + framework:      ~3.0 GB
+Waywiser main app (Kotlin):  ~0.5 GB
+Rust runtime + SQLite:       ~0.3 GB
+Edge model (Gemma 4 E2B):   ~0.7 GB
+────────────────────────────────────
+Total:                       ~4.5 GB
+Remaining for buffers/apps:  ~3.5 GB
+</code></pre>
+
+<h4>Testing</h4>
+<ul>
+  <li>Instrumented: cold-load &lt; 2 s on S21+</li>
+  <li>Instrumented: classification latency &lt; 200 ms warm</li>
+  <li>Soak (24 h): COLD/WARM/HOT transitions stable, no leaked memory, no thermal throttle</li>
+  <li>Memory pressure simulation: model unloads cleanly, no crash, app continues without edge</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>4. CameraSystem <span class="crate-tag">Kotlin + Rust</span></h3>
+
+<p>Camera perception pipeline: CameraX &rarr; cheap frame selection &rarr; local OCR/CV &rarr; VisualScene &rarr; selective Qwen vision. Blueprint &sect;&sect;60&ndash;61.</p>
+
+<h4>Kotlin layer</h4>
+<pre><code class="language-kotlin">/** Cheap frame-change detector. Runs per-preview-frame. */
+class FrameSelector(private val diffThreshold: Float = 0.15f) {
+    /** Returns true if frame is "interesting" enough to process. */
+    fun shouldProcess(frame: ImageProxy, previous: ImageProxy?): Boolean
+}
+
+/** Local on-device processors — no network, no LLM. */
+class LocalVisionProcessor(
+    private val ocrEngine: TextRecognizer,       // ML Kit
+    private val barcodeScanner: BarcodeScanner,   // ML Kit
+) {
+    suspend fun process(frame: ImageProxy): LocalVisionResult
+}
+
+data class LocalVisionResult(
+    val textBlocks: List&lt;TextBlock&gt;,
+    val barcodes: List&lt;Barcode&gt;,
+    val dominantObjects: List&lt;DetectedObject&gt;,
+)
+</code></pre>
+
+<h4>VisualScene (Rust)</h4>
+<pre><code class="language-rust">/// Working memory of the current visual scene.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VisualScene {
+    pub objects: Vec&lt;DetectedObject&gt;,
+    pub visible_text: Vec&lt;TextBlock&gt;,
+    pub active_object: Option&lt;ObjectId&gt;,
+    pub relationships: Vec&lt;ObjectRelationship&gt;,
+    pub last_change: DateTime&lt;Utc&gt;,
+    pub confidence: f32,
+    pub source: VisionSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectedObject {
+    pub id: ObjectId,
+    pub label: String,
+    pub confidence: f32,
+    pub bounding_box: Option&lt;BoundingBox&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextBlock {
+    pub text: String,
+    pub language: Option&lt;String&gt;,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum VisionSource {
+    LocalOcr,
+    LocalCv,
+    QwenVision { prompt_tokens: u32, model_id: String },
+}
+</code></pre>
+
+<h4>Selective Qwen vision decision</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Trigger</th><th>Send to Qwen?</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>User asks &ldquo;what&rsquo;s this?&rdquo;</td><td>Yes</td><td>Explicit request</td></tr>
+    <tr><td>Local CV low confidence (&lt; 0.3)</td><td>Yes, if user in active session</td><td>Fallback</td></tr>
+    <tr><td>Scene changed &gt; 60% since last query</td><td>Yes, if follow-up context needed</td><td>Continuity</td></tr>
+    <tr><td>Routine idle frame</td><td>No</td><td>Do not send every frame to server</td></tr>
+    <tr><td>Screen off / background</td><td>No</td><td>Privacy + battery</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Privacy invariant</h4>
+<ul>
+  <li>Raw frames: ephemeral unless user explicitly captures/persists</li>
+  <li>No continuous background capture</li>
+  <li>VisualScene belongs to working memory (ephemeral retention)</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>5. BrainReflection <span class="crate-tag">waywiser-brain (extended)</span></h3>
+
+<p>Full reflective learning pipeline. Blueprint &sect;&sect;28&ndash;32. Extends P0&rsquo;s deterministic Pass 1 with deferred model-driven reflection.</p>
+
+<h4>Extensions to P0 types</h4>
+<pre><code class="language-rust">/// P2 extends ExperienceRecord with reflection state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectionState {
+    pub pass1_completed: bool,
+    pub pass1_signals: Vec&lt;DurableSignal&gt;,
+    pub pass2_scheduled: bool,
+    pub pass2_completed_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub candidates: Vec&lt;MemoryCandidate&gt;,
+}
+
+/// A candidate memory or procedure extracted by Pass 2 reflection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryCandidate {
+    pub id: Uuid,
+    pub kind: CandidateKind,
+    pub content: String,
+    pub source_experiences: Vec&lt;ExperienceId&gt;,
+    pub model_confidence: f32,
+    /// Deterministic code assigns the actual ceiling.
+    pub assigned_confidence: f32,
+    pub provenance: Provenance,
+    pub validation_status: ValidationStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CandidateKind {
+    PersonalMemory,
+    Procedure(ProcedurePattern),
+    Correction,     // user explicitly corrected a belief
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProcedurePattern {
+    pub trigger: String,   // WHEN X
+    pub action: String,    // DO Y / AVOID Z / PREFER W
+    pub evidence_count: u32,
+    pub maturity: ProcedureMaturity,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProcedureMaturity {
+    Observed,       // seen once
+    Recurring,      // seen 2-3 times
+    Established,    // 4+ occurrences, ready for skill compilation
+}
+</code></pre>
+
+<h4>Reflection pipeline</h4>
+<pre><code class="language-rust">pub trait BrainReflector: Send + Sync {
+    /// Pass 1: deterministic signal extraction. Runs immediately.
+    fn pass1_extract(&amp;self, experience: &amp;ExperienceRecord) -&gt; Vec&lt;DurableSignal&gt;;
+
+    /// Pass 2: model-driven reflection. Runs deferred (P3 priority).
+    /// Returns candidate memories/procedures for validation.
+    async fn pass2_reflect(
+        &amp;self,
+        experience: &amp;ExperienceRecord,
+        signals: &amp;[DurableSignal],
+        existing_memories: &amp;[MemoryRecord],
+        existing_procedures: &amp;[ProcedureRecord],
+    ) -&gt; Result&lt;Vec&lt;MemoryCandidate&gt;, BrainError&gt;;
+
+    /// Deterministic validation of model-proposed candidates.
+    fn validate_candidate(&amp;self, candidate: &amp;MemoryCandidate) -&gt; ValidationResult;
+
+    /// Periodic consolidation: merge related memories/procedures.
+    async fn consolidate(
+        &amp;self,
+        memories: &amp;[MemoryRecord],
+        procedures: &amp;[ProcedureRecord],
+    ) -&gt; Result&lt;ConsolidationResult, BrainError&gt;;
+}
+
+pub enum ValidationResult {
+    Accept { adjusted_confidence: f32 },
+    Reject { reason: String },
+    NeedsMoreEvidence { current: u32, required: u32 },
+}
+</code></pre>
+
+<h4>Scheduling &amp; preemption</h4>
+<pre><code>Experience persisted (immediate)
+    │
+    ▼
+Pass 1 deterministic (immediate, sync)
+    │
+    ├─ no durable signal → stop
+    │
+    ▼
+Schedule Pass 2 reflection job (P3 priority)
+    │
+    ▼
+BackgroundScheduler picks up when idle
+    │
+    ├─ P0 interactive request arrives → CANCEL reflection, retry later
+    │
+    ▼
+Pass 2 reflection (async, Qwen)
+    │
+    ▼
+Deterministic validation
+    │
+    ├─ Accept → persist as MemoryRecord / ProcedureRecord
+    ├─ Reject → discard with audit log
+    └─ NeedsMoreEvidence → mark, wait for more occurrences
+</code></pre>
+
+<h4>Confidence ceiling enforcement</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Source</th><th>Max confidence</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>Single model inference</td><td>0.5</td><td>One clever answer ≠ knowledge</td></tr>
+    <tr><td>User explicit statement</td><td>0.9</td><td>High trust, not absolute (user can misremember)</td></tr>
+    <tr><td>User correction</td><td>0.95</td><td>Deliberate correction &gt; casual statement</td></tr>
+    <tr><td>Repeated observation (3+)</td><td>0.7</td><td>Pattern emerging</td></tr>
+    <tr><td>Verified external data</td><td>0.85</td><td>Calendar entry, API response</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Testing</h4>
+<ul>
+  <li>Unit: Pass 1 extracts expected signals from fixture experiences</li>
+  <li>Integration: full pipeline from experience to persisted memory record</li>
+  <li>Preemption: reflection job cancels within 500 ms when interactive request arrives</li>
+  <li>Maturity: procedure with 1 observation = <code>Observed</code>; 4+ = <code>Established</code></li>
+  <li>Ceiling: model-proposed confidence capped to source-determined ceiling</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>6. SemanticMemory <span class="crate-tag">waywiser-memory (extended)</span></h3>
+
+<p>Extends P0 lexical recall with BGE-M3 embeddings and vector search. Blueprint &sect;&sect;48&ndash;50.</p>
+
+<h4>New traits</h4>
+<pre><code class="language-rust">/// Embedding generation abstraction.
+pub trait EmbeddingProvider: Send + Sync {
+    fn model_id(&amp;self) -&gt; &amp;str;
+    fn dimension(&amp;self) -&gt; usize;
+    async fn embed(&amp;self, text: &amp;str) -&gt; Result&lt;Vec&lt;f32&gt;, EmbeddingError&gt;;
+    async fn embed_batch(&amp;self, texts: &amp;[&amp;str]) -&gt; Result&lt;Vec&lt;Vec&lt;f32&gt;&gt;, EmbeddingError&gt;;
+}
+
+/// Vector storage and search abstraction.
+pub trait VectorIndex: Send + Sync {
+    async fn upsert(&amp;self, entries: &amp;[VectorEntry]) -&gt; Result&lt;(), VectorError&gt;;
+    async fn remove(&amp;self, ids: &amp;[Uuid]) -&gt; Result&lt;(), VectorError&gt;;
+    async fn search(
+        &amp;self,
+        query_vector: &amp;[f32],
+        limit: usize,
+        filter: Option&lt;&amp;VectorFilter&gt;,
+    ) -&gt; Result&lt;Vec&lt;VectorMatch&gt;, VectorError&gt;;
+}
+
+/// Every stored vector carries provenance metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VectorEntry {
+    pub id: Uuid,
+    pub vector: Vec&lt;f32&gt;,
+    pub embedding_model_id: String,
+    pub model_version: String,
+    pub dimension: usize,
+    pub source_revision: u64,
+    pub created_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone)]
+pub struct VectorMatch {
+    pub id: Uuid,
+    pub score: f32,     // cosine similarity
+    pub entry: VectorEntry,
+}
+</code></pre>
+
+<h4>Hybrid recall</h4>
+<pre><code class="language-rust">/// Combines lexical (FTS5) and semantic (vector) recall.
+pub struct HybridRecallEngine {
+    lexical: LexicalIndex,       // from P0
+    semantic: Box&lt;dyn VectorIndex&gt;,
+    embedder: Box&lt;dyn EmbeddingProvider&gt;,
+}
+
+impl HybridRecallEngine {
+    pub async fn recall(
+        &amp;self,
+        query: &amp;str,
+        scope: &amp;RecallScope,
+        limit: usize,
+    ) -&gt; Result&lt;Vec&lt;RecallResult&gt;, MemoryError&gt; {
+        // Run both in parallel
+        let (lexical, semantic) = tokio::join!(
+            self.lexical.search(query, scope, limit),
+            self.semantic_search(query, scope, limit),
+        );
+
+        // Merge and rank by combined score
+        // Weights: lexical_score * 0.3 + semantic_score * 0.3
+        //        + recency * 0.15 + usage * 0.1 + confidence * 0.15
+        self.merge_and_rank(lexical?, semantic?, limit)
+    }
+
+    /// Fail-soft: if embeddings unavailable, return lexical-only results.
+    async fn semantic_search(
+        &amp;self, query: &amp;str, scope: &amp;RecallScope, limit: usize,
+    ) -&gt; Result&lt;Vec&lt;RecallResult&gt;, MemoryError&gt; {
+        match self.embedder.embed(query).await {
+            Ok(vec) =&gt; { /* vector search */ }
+            Err(_) =&gt; Ok(vec![]),  // fail-soft: no semantic results
+        }
+    }
+}
+</code></pre>
+
+<h4>Vector migration protocol (blueprint &sect;50)</h4>
+<pre><code>1. Old index continues serving all queries
+2. New index builds independently (background, P4 priority)
+3. Validate: new index covers all entries, quality spot-check
+4. Atomic switch: swap search target
+5. Retire old index after grace period
+</code></pre>
+<ul>
+  <li><strong>Invariant:</strong> incompatible embedding spaces are NEVER mixed in a single search</li>
+  <li>Each <code>VectorEntry</code> carries <code>embedding_model_id</code> &mdash; entries from different models cannot co-exist in one index</li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>7. SkillEvolution <span class="crate-tag">waywiser-skills (extended)</span></h3>
+
+<p>Skill compilation, evaluation, and promotion. Blueprint &sect;&sect;32&ndash;33. Extends P0 skill loading with evolution pipeline.</p>
+
+<h4>Evolution pipeline types</h4>
+<pre><code class="language-rust">/// Compiles a mature procedure into a candidate skill.
+pub trait SkillCompiler: Send + Sync {
+    async fn compile(
+        &amp;self,
+        procedure: &amp;ProcedureRecord,
+        evidence: &amp;[ExperienceRecord],
+    ) -&gt; Result&lt;SkillCandidate, SkillError&gt;;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillCandidate {
+    pub id: Uuid,
+    pub name: String,
+    pub compiled_from: ProcedureId,
+    pub skill_md: String,           // generated SKILL.md content
+    pub manifest: SkillManifest,
+    pub compiled_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillManifest {
+    pub required_capabilities: Vec&lt;CapabilityName&gt;,
+    pub risk_level: RiskLevel,
+    pub evaluation_fixtures: Vec&lt;EvalFixturePath&gt;,
+}
+
+/// Validates skill candidates against invariant I10.
+pub struct SkillValidator;
+
+impl SkillValidator {
+    pub fn validate(&amp;self, candidate: &amp;SkillCandidate) -&gt; SkillValidationResult {
+        let mut violations = vec![];
+
+        // I10 checks:
+        if self.modifies_security_kernel(candidate) {
+            violations.push("Attempts to modify security kernel");
+        }
+        if self.grants_capabilities(candidate) {
+            violations.push("Attempts to grant new capabilities");
+        }
+        if self.lowers_risk(candidate) {
+            violations.push("Attempts to lower action risk");
+        }
+        if self.overwrites_provenance(candidate) {
+            violations.push("Attempts to overwrite provenance rules");
+        }
+        if self.alters_soul(candidate) {
+            violations.push("Attempts to alter SOUL governance");
+        }
+
+        if violations.is_empty() {
+            SkillValidationResult::Valid
+        } else {
+            SkillValidationResult::Invalid(violations)
+        }
+    }
+}
+
+/// Evaluates candidate against baseline on fixtures.
+pub trait EvaluationRunner: Send + Sync {
+    async fn evaluate(
+        &amp;self,
+        candidate: &amp;SkillCandidate,
+        baseline: Option&lt;&amp;SkillVersion&gt;,
+    ) -&gt; Result&lt;EvaluationResult, SkillError&gt;;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EvaluationResult {
+    pub passed: bool,
+    pub score: f32,
+    pub baseline_score: Option&lt;f32&gt;,
+    pub fixture_results: Vec&lt;FixtureResult&gt;,
+    pub evaluated_at: DateTime&lt;Utc&gt;,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillVersion {
+    pub id: Uuid,
+    pub skill_id: Uuid,
+    pub version: u32,
+    pub compiled_from: ProcedureId,
+    pub evaluation: EvaluationResult,
+    pub promoted_at: DateTime&lt;Utc&gt;,
+    pub status: SkillVersionStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SkillVersionStatus {
+    Candidate,
+    Active,
+    Retired,
+}
+</code></pre>
+
+<h4>Promotion rules</h4>
+<ul>
+  <li>Promotion occurs ONLY at safe boundaries: between sessions, during startup, never mid-turn</li>
+  <li>A running session&rsquo;s skill set is frozen at session start</li>
+  <li>If evaluation fails (score &lt; baseline), candidate is rejected with audit log</li>
+  <li>Skill format on disk: <code>skill/SKILL.md</code> + <code>manifest.yaml</code> + <code>evals/</code> + <code>resources/</code></li>
+</ul>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>8. ContextProjection <span class="crate-tag">waywiser-context (submodule)</span></h3>
+
+<p>The model never receives the complete context graph. Blueprint &sect;13.</p>
+
+<pre><code class="language-rust">pub struct ProjectionEngine {
+    token_estimator: Box&lt;dyn TokenEstimator&gt;,
+}
+
+impl ProjectionEngine {
+    /// Project relevant context for the current query.
+    pub fn project(
+        &amp;self,
+        snapshot: &amp;ContextGraphSnapshot,
+        query: &amp;str,
+        task_type: TaskType,
+        budget_tokens: usize,
+    ) -&gt; ContextProjection {
+        // 1. Score each node for relevance to query + task
+        let scored: Vec&lt;(f32, &amp;ContextNode)&gt; = snapshot.nodes.iter()
+            .map(|n| (self.relevance_score(n, query, task_type), n))
+            .collect();
+
+        // 2. Sort by score descending
+        // 3. Greedily include nodes until budget exhausted
+        // 4. Summarize verbose nodes to fit budget
+
+        let mut projection = ContextProjection::new();
+        let mut tokens_used = 0;
+        for (score, node) in scored {
+            let node_tokens = self.token_estimator.estimate(node);
+            if tokens_used + node_tokens &gt; budget_tokens {
+                // Try summarizing
+                if let Some(summary) = self.summarize(node) {
+                    let summary_tokens = self.token_estimator.estimate_str(&amp;summary);
+                    if tokens_used + summary_tokens &lt;= budget_tokens {
+                        projection.add_summary(summary, score);
+                        tokens_used += summary_tokens;
+                    }
+                }
+                continue;
+            }
+            projection.add_node(node.clone(), score);
+            tokens_used += node_tokens;
+        }
+
+        projection.tokens_used = tokens_used;
+        projection
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ContextProjection {
+    pub nodes: Vec&lt;ProjectedNode&gt;,
+    pub summaries: Vec&lt;ProjectedSummary&gt;,
+    pub tokens_used: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum TaskType {
+    SimpleChat,           // budget: ~2K tokens
+    ToolCall,             // budget: ~4K tokens
+    Research,             // budget: ~16K tokens
+    BrainReflection,      // budget: ~8K tokens
+}
+</code></pre>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>9. ReasoningQueue <span class="crate-tag">waywiser-proactive (extended)</span></h3>
+
+<p>Durable deferred reasoning jobs. Blueprint &sect;66. Extends P1&rsquo;s basic <code>DeferredReasoningJob</code> with persistence, relevance checks, and coalescing.</p>
+
+<h4>Extended type</h4>
+<pre><code class="language-rust">/// P2 extends the P1 DeferredReasoningJob.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReasoningJob {
+    // -- from P1 --
+    pub id: Uuid,
+    pub cause: ReasoningCause,
+    pub created_at: DateTime&lt;Utc&gt;,
+    pub priority: InferencePriority,
+    pub context_refs: Vec&lt;ContextRef&gt;,
+
+    // -- P2 extensions --
+    pub relevance_rule: RelevanceRule,
+    pub status: ReasoningJobStatus,
+    pub attempts: u32,
+    pub last_attempt_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    pub coalesce_key: Option&lt;String&gt;,  // jobs with same key merge
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RelevanceRule {
+    /// Still relevant if this context node exists and matches.
+    ContextNodePresent { domain_key: ContextDomainKey, predicate: String },
+    /// Still relevant if time hasn't passed a deadline.
+    BeforeDeadline(DateTime&lt;Utc&gt;),
+    /// Always relevant (execute when capacity available).
+    Always,
+    /// Custom: evaluate via a deterministic function.
+    Custom(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ReasoningJobStatus {
+    Pending,
+    Executing,
+    Completed(serde_json::Value),
+    Expired { reason: String },
+    Failed { error: String, retryable: bool },
+}
+</code></pre>
+
+<h4>Queue manager</h4>
+<pre><code class="language-rust">pub struct ReasoningQueueManager {
+    store: Box&lt;dyn ReasoningJobStore&gt;,  // SQLite-backed, survives process death
+    context_graph: Arc&lt;RwLock&lt;ContextGraph&gt;&gt;,
+}
+
+impl ReasoningQueueManager {
+    /// Enqueue a new job, coalescing with existing if key matches.
+    pub async fn enqueue(&amp;self, job: ReasoningJob) -&gt; Result&lt;Uuid, QueueError&gt; {
+        if let Some(key) = &amp;job.coalesce_key {
+            if let Some(existing) = self.store.find_by_coalesce_key(key).await? {
+                // Merge: keep earlier job, update context_refs
+                self.store.merge_context_refs(existing.id, &amp;job.context_refs).await?;
+                return Ok(existing.id);
+            }
+        }
+        self.store.insert(&amp;job).await
+    }
+
+    /// Pick next job to execute. Checks relevance before returning.
+    pub async fn next_ready(&amp;self) -&gt; Result&lt;Option&lt;ReasoningJob&gt;, QueueError&gt; {
+        loop {
+            let candidate = self.store.next_by_priority().await?;
+            match candidate {
+                None =&gt; return Ok(None),
+                Some(job) =&gt; {
+                    if self.is_still_relevant(&amp;job).await {
+                        return Ok(Some(job));
+                    } else {
+                        self.store.mark_expired(
+                            job.id,
+                            "Cause no longer relevant in context graph",
+                        ).await?;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Semantic relevance check — not just "older than N minutes".
+    async fn is_still_relevant(&amp;self, job: &amp;ReasoningJob) -&gt; bool {
+        match &amp;job.relevance_rule {
+            RelevanceRule::Always =&gt; true,
+            RelevanceRule::BeforeDeadline(dl) =&gt; Utc::now() &lt; *dl,
+            RelevanceRule::ContextNodePresent { domain_key, .. } =&gt; {
+                let graph = self.context_graph.read().await;
+                graph.has_node(domain_key)
+            }
+            RelevanceRule::Custom(_) =&gt; true, // custom eval deferred
+        }
+    }
+}
+</code></pre>
+
+<h4>Metrics</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Metric</th><th>Target</th></tr></thead>
+  <tbody>
+    <tr><td>Queue depth (steady state)</td><td>&lt; 50 pending jobs</td></tr>
+    <tr><td>Average wait time (P3)</td><td>&lt; 30 min during active use, &lt; 5 min idle</td></tr>
+    <tr><td>Expiry rate</td><td>30&ndash;60% (expected; many signals become irrelevant)</td></tr>
+    <tr><td>Coalesce rate</td><td>&gt; 10% (similar signals merge)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ─────────────────────────────────────────── -->
+<h3>P2 Acceptance Criteria</h3>
+
+<div class="spec-table">
+<table>
+  <thead><tr><th>#</th><th>Criterion</th><th>Verification</th></tr></thead>
+  <tbody>
+    <tr><td>AC-1</td><td>Walking + headphones + upcoming meeting &rarr; ContextGraph reflects all three; projected context includes relevant subset only</td><td>Integration test with mock Android callbacks</td></tr>
+    <tr><td>AC-2</td><td>Important contact message &rarr; AttentionGovernor enforces NOTIFY floor regardless of edge model hint suggesting DROP</td><td>Unit test with fixture</td></tr>
+    <tr><td>AC-3</td><td>Edge model loads in &lt; 2 s on S21+; classifies notification in &lt; 200 ms warm</td><td>Instrumented benchmark on device</td></tr>
+    <tr><td>AC-4</td><td>Edge model unloads automatically on memory pressure; no crash; app continues without edge</td><td>Instrumented test with simulated <code>onTrimMemory</code></td></tr>
+    <tr><td>AC-5</td><td>Camera &ldquo;what&rsquo;s this?&rdquo; &rarr; local OCR + selective Qwen vision &rarr; coherent multi-turn answer</td><td>Manual test with printed text / barcode / real object</td></tr>
+    <tr><td>AC-6</td><td>Brain reflection runs during idle; produces procedure from 3+ similar experiences</td><td>Integration test: inject 4 similar experiences, verify procedure with <code>Established</code> maturity</td></tr>
+    <tr><td>AC-7</td><td>Semantic recall finds relevant memory that pure lexical search misses</td><td>Integration test: store memory with synonyms, recall by synonym</td></tr>
+    <tr><td>AC-8</td><td>Skill candidate compiled &rarr; evaluated &rarr; promoted between sessions (never mid-turn)</td><td>Integration: promote skill, verify active session unaffected, new session sees it</td></tr>
+    <tr><td>AC-9</td><td>Context projection for SimpleChat uses &lt; 2K tokens; Research uses &lt; 16K</td><td>Unit test with large context graph, verify budget enforced</td></tr>
+    <tr><td>AC-10</td><td>Reasoning queue: 50 deferred jobs; ~30 expire as irrelevant; ~20 execute when idle</td><td>Integration test: enqueue 50, manipulate context graph, verify expiry + execution</td></tr>
+    <tr><td>AC-11</td><td>Vector migration: switch embedding model with zero downtime; no mixed-space queries</td><td>Integration: build new index while old serves, swap, verify no mixed results</td></tr>
+    <tr><td>AC-12</td><td>24-hour soak: edge model COLD/WARM/HOT transitions stable; no thermal throttling; no memory leak</td><td>Device soak test with monitoring</td></tr>
+  </tbody>
+</table>
+</div>
+
+</div>

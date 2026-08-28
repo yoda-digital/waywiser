@@ -1,0 +1,927 @@
+<div class="phase-section" id="p1-product">
+
+<h2>P1: Product — Useful Internal PA Replacing Termux</h2>
+
+<div class="phase-meta">
+  <span class="meta-item"><strong>Timeline:</strong> Months 4–8</span>
+  <span class="meta-item"><strong>Team:</strong> 4 engineers</span>
+  <span class="meta-item"><strong>Entry:</strong> P0 vertical slice working end-to-end</span>
+  <span class="meta-item"><strong>Exit:</strong> Internal team using Waywiser v2 daily instead of Termux</span>
+</div>
+
+<p>P1 transforms the proven Foundation into a daily-use personal assistant. Every component below builds on the Shared Foundations types and P0 crates. Types defined in P0 are referenced by name, not redefined. Extensions are marked explicitly.</p>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-voice">1. VoicePipeline <span class="lang-tag">Kotlin</span></h3>
+
+<h4>State Machine</h4>
+<pre><code class="language-rust">// Mirrored in Kotlin as sealed interface
+enum VoiceState {
+    Idle,
+    Listening { vad_active: bool },
+    Recognizing,        // STT processing
+    Processing,         // Pi agent working
+    Speaking { chunk: usize, total: usize },
+    BargeInDetected,    // transitional: stop TTS → Listening
+    Error(VoiceError),
+}
+
+enum VoiceEvent {
+    MicActivated,           // user presses mic / hotword / widget
+    VadSpeechStart,
+    VadSpeechEnd { audio: AudioSegment },
+    SttResult(String),
+    SttPartial(String),
+    AgentStreamChunk(String),
+    AgentStreamDone,
+    TtsChunkReady(AudioChunk),
+    TtsPlaybackDone,
+    BargeIn,                // VAD fires during Speaking
+    Cancel,
+    ErrorOccurred(VoiceError),
+}
+
+// Transitions
+// Idle → Listening:           on MicActivated
+// Listening → Recognizing:    on VadSpeechEnd
+// Recognizing → Processing:   on SttResult (feed to Pi agent)
+// Processing → Speaking:      on AgentStreamChunk (first chunk)
+// Speaking → Speaking:        on AgentStreamChunk (subsequent)
+// Speaking → Idle:            on TtsPlaybackDone
+// Speaking → BargeInDetected: on BargeIn
+// BargeInDetected → Listening: immediate (stop TTS, steer Pi)
+// Any → Idle:                 on Cancel
+// Any → Error:                on ErrorOccurred</code></pre>
+
+<h4>Kotlin Interface</h4>
+<pre><code class="language-kotlin">class VoiceManager(
+    private val piRuntime: WaywiserRuntime,  // P0 FFI bridge
+    private val tts: TextToSpeech,
+    private val recognizer: SpeechRecognizer,
+) {
+    val state: StateFlow&lt;VoiceState&gt;
+
+    suspend fun activate()            // start listening
+    suspend fun cancel()              // abort any state → Idle
+    fun setBargeInEnabled(enabled: Boolean)
+
+    // Internal: called by NotificationListener or widget
+    fun injectTextInput(text: String) // bypass voice, send to Pi
+}
+
+// VoiceInteractionService — OPTIONAL (cleared on APK reinstall)
+// All invocation paths work without ROLE_ASSISTANT:
+//   app launch, widget, notification, shortcut, share, mic button
+// Post-update MDM hook to re-set Secure Settings if available:
+//   adb shell settings put secure assistant &lt;pkg&gt;/&lt;activity&gt;
+//   adb shell settings put secure voice_interaction_service &lt;pkg&gt;/&lt;service&gt;</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-notifications">2. NotificationIntelligence <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<p><strong>Provisioning requirement:</strong> Android 15+ Enhanced Confirmation Mode (ECM) blocks sideloaded apps from enabling NotificationListenerService. Requires one of: (a) device factory image <code>/system/etc/sysconfig</code> allowlist, (b) MDM programmatic grant, (c) per-device ADB enablement.</p>
+
+<h4>Rust Types (waywiser-notifications crate)</h4>
+<pre><code class="language-rust">/// Normalized notification extracted from Android StatusBarNotification
+struct NormalizedNotification {
+    id: NotificationId,
+    app_package: String,
+    channel_id: Option&lt;String&gt;,
+    title: String,
+    text: String,
+    big_text: Option&lt;String&gt;,
+    person: Option&lt;PersonRef&gt;,        // sender, if identifiable
+    actions: Vec&lt;NotificationAction&gt;,
+    priority: AndroidPriority,
+    category: Option&lt;String&gt;,          // Android notification category
+    posted_at: DateTime&lt;Utc&gt;,
+    is_group_summary: bool,
+    conversation_id: Option&lt;String&gt;,
+}
+
+/// Deterministic classification — no LLM involvement
+struct ClassificationResult {
+    source_rule: ClassificationRule,
+    attention: AttentionDecision,       // from Shared Foundations
+    reason: &amp;'static str,
+}
+
+enum ClassificationRule {
+    ImportantContact(ContactId),        // user-designated → min NOTIFY
+    RepeatedIncomingCall,               // 2+ calls in 5min → HEADS_UP
+    HighPriorityChannel,               // app-declared importance HIGH+
+    KnownAppPolicy(String),            // e.g. "routine CI bot" → max NOTIFY
+    FamilyContact(ContactId),          // known family → min NOTIFY
+    SecurityAlert,                      // Android system security
+    AlarmChannel,                       // alarm/timer
+    Default(AttentionDecision),         // fallback by Android priority
+}
+
+trait NotificationClassifier: Send + Sync {
+    fn classify(&amp;self, notif: &amp;NormalizedNotification) -&gt; ClassificationResult;
+    fn update_policy(&amp;mut self, policy: NotificationPolicy);
+}
+
+/// User-configurable notification policies
+struct NotificationPolicy {
+    important_contacts: Vec&lt;ContactId&gt;,
+    family_contacts: Vec&lt;ContactId&gt;,
+    app_ceilings: HashMap&lt;String, AttentionDecision&gt;,  // package → max
+    app_floors: HashMap&lt;String, AttentionDecision&gt;,    // package → min
+}</code></pre>
+
+<h4>Kotlin Service</h4>
+<pre><code class="language-kotlin">class WaywiserNotificationListener : NotificationListenerService() {
+    // Normalize and forward to Rust classifier
+    override fun onNotificationPosted(sbn: StatusBarNotification) {
+        val normalized = NotificationNormalizer.normalize(sbn)
+        val result = waywiserRuntime.classifyNotification(normalized)
+        handleAttentionDecision(result.attention, normalized)
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification) {
+        waywiserRuntime.notificationDismissed(sbn.key)
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-calendar">3. CalendarIntegration <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<h4>Capabilities Registered</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Capability</th><th>Risk</th><th>Side Effect</th><th>Replay</th><th>Reversible</th></tr></thead>
+  <tbody>
+    <tr><td><code>calendar.read</code></td><td>ReadPersonal</td><td>No</td><td>SafeReplay</td><td>N/A</td></tr>
+    <tr><td><code>calendar.create</code></td><td>CrossAppWrite</td><td>Yes</td><td>VerifyBeforeRetry</td><td>Yes</td></tr>
+    <tr><td><code>calendar.update</code></td><td>CrossAppWrite</td><td>Yes</td><td>VerifyBeforeRetry</td><td>Yes</td></tr>
+    <tr><td><code>calendar.delete</code></td><td>Destructive</td><td>Yes</td><td>NeverReplay</td><td>No</td></tr>
+  </tbody>
+</table>
+</div>
+
+<pre><code class="language-rust">/// Calendar event as seen by Waywiser
+struct CalendarEvent {
+    id: EventId,
+    calendar_id: CalendarId,
+    title: String,
+    start: DateTime&lt;Utc&gt;,
+    end: DateTime&lt;Utc&gt;,
+    location: Option&lt;String&gt;,
+    attendees: Vec&lt;String&gt;,
+    recurrence: Option&lt;String&gt;,        // RRULE
+    all_day: bool,
+}
+
+struct ConflictReport {
+    event_a: EventId,
+    event_b: EventId,
+    overlap: Duration,
+    suggestion: Option&lt;String&gt;,        // from Qwen, not authoritative
+}
+
+trait CalendarService: Send + Sync {
+    fn upcoming(&amp;self, horizon: Duration) -&gt; Result&lt;Vec&lt;CalendarEvent&gt;, CalError&gt;;
+    fn conflicts(&amp;self, horizon: Duration) -&gt; Result&lt;Vec&lt;ConflictReport&gt;, CalError&gt;;
+    // Mutations always go through SecurityKernel via ActionIntent
+    fn create_intent(&amp;self, event: NewCalendarEvent) -&gt; ActionIntent;
+    fn update_intent(&amp;self, id: EventId, patch: CalendarPatch) -&gt; ActionIntent;
+    fn delete_intent(&amp;self, id: EventId, reason: String) -&gt; ActionIntent;
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-capture">4. CaptureSystem <span class="lang-tag">Kotlin</span></h3>
+
+<pre><code class="language-kotlin">/// Unified entry point for all input modalities
+class CaptureManager(
+    private val runtime: WaywiserRuntime,
+    private val voiceManager: VoiceManager,
+) {
+    sealed interface CaptureSource {
+        data class Text(val content: String) : CaptureSource
+        data class Voice(val transcript: String, val audio: Uri?) : CaptureSource
+        data class Camera(val imageUri: Uri, val ocr: String?) : CaptureSource
+        data class ShareSheet(val intent: Intent) : CaptureSource
+        data class File(val uri: Uri, val mimeType: String) : CaptureSource
+    }
+
+    /// All captures → Observation with appropriate RetentionClass
+    suspend fun capture(source: CaptureSource): Observation {
+        val obs = when (source) {
+            is CaptureSource.Text -&gt; Observation(
+                kind = ObservationKind.UserInput,
+                value = source.content,
+                retention = RetentionClass.Session,   // promoted by Brain if durable
+            )
+            is CaptureSource.Camera -&gt; Observation(
+                kind = ObservationKind.VisualCapture,
+                value = source.ocr ?: "[image]",
+                retention = RetentionClass.Experience, // user explicitly captured
+            )
+            // ... other sources
+        }
+        runtime.ingestObservation(obs)
+        return obs
+    }
+}
+
+/// ShareActivity: registered in AndroidManifest for share targets
+class ShareActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        val intent = intent ?: return finish()
+        lifecycleScope.launch {
+            captureManager.capture(CaptureSource.ShareSheet(intent))
+            finish()
+        }
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-background">5. BackgroundScheduler <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<h4>Foreground Service Type Selection</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Type</th><th>Timeout</th><th>Verdict</th><th>Reason</th></tr></thead>
+  <tbody>
+    <tr><td><code>dataSync</code></td><td>6h / 24h</td><td class="no">Reject</td><td>Kills Brain reflection</td></tr>
+    <tr><td><code>mediaProcessing</code></td><td>6h / 24h</td><td class="no">Reject</td><td>Kills Brain reflection</td></tr>
+    <tr><td><code>connectedDevice</code></td><td>None</td><td class="maybe">Possible</td><td>Framing inference as device communication</td></tr>
+    <tr><td><code>specialUse</code></td><td>None</td><td class="yes">Use this</td><td>No Play review for internal APK</td></tr>
+  </tbody>
+</table>
+</div>
+
+<pre><code class="language-rust">/// Background work reliability assessment (Rust)
+enum BackgroundHealth {
+    Healthy,            // test jobs execute within 10% of expected time
+    Limited,            // delays up to 5x observed
+    SeverelyRestricted, // jobs fail or delay &gt;10x
+    Unavailable,        // no background execution observed
+}
+
+struct BackgroundReliabilityManager {
+    current_health: BackgroundHealth,
+    last_test_at: DateTime&lt;Utc&gt;,
+    mean_delay_ratio: f32,      // actual / expected
+    missed_jobs_24h: u32,
+}
+
+impl BackgroundReliabilityManager {
+    /// Schedule a noop test job, measure execution delay
+    fn schedule_probe(&amp;mut self) -&gt; ProbeId;
+    /// Called when probe executes — update health assessment
+    fn probe_completed(&amp;mut self, probe_id: ProbeId, scheduled: DateTime&lt;Utc&gt;, actual: DateTime&lt;Utc&gt;);
+    /// Returns current assessment for UI and capability gating
+    fn health(&amp;self) -&gt; BackgroundHealth;
+}</code></pre>
+
+<pre><code class="language-kotlin">/// Foreground service for active inference
+class InferenceService : Service() {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val notification = createNotification("Waywiser is thinking…")
+        // specialUse: requires &lt;property&gt; in manifest with justification
+        ServiceCompat.startForeground(
+            this, NOTIF_ID, notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
+        return START_STICKY
+    }
+}
+
+/// WorkManager for deferred Brain work
+class BrainReflectionWorker(ctx: Context, params: WorkerParameters)
+    : CoroutineWorker(ctx, params) {
+    override suspend fun doWork(): Result {
+        // Check inference slot availability (P2+ delegated)
+        if (!waywiserRuntime.inferenceSlotAvailable(Priority.P3)) {
+            return Result.retry()
+        }
+        waywiserRuntime.runBrainReflection()
+        return Result.success()
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-workgraph">6. WorkGraph <span class="lang-tag">Rust crate: waywiser-work</span></h3>
+
+<pre><code class="language-rust">use uuid::Uuid;
+use chrono::{DateTime, Utc};
+
+type GoalId = Uuid;
+type WorkItemId = Uuid;
+
+struct Goal {
+    id: GoalId,
+    title: String,
+    description: String,
+    priority: Priority,
+    status: GoalStatus,
+    created_at: DateTime&lt;Utc&gt;,
+    updated_at: DateTime&lt;Utc&gt;,
+}
+
+enum GoalStatus { Active, Paused, Completed, Abandoned }
+
+struct WorkItem {
+    id: WorkItemId,
+    goal_id: Option&lt;GoalId&gt;,
+    title: String,
+    description: String,
+    status: WorkStatus,
+    priority: Priority,
+    dependencies: Vec&lt;WorkItemId&gt;,
+    assignee: Option&lt;AgentAssignment&gt;,
+    agent_session_id: Option&lt;SessionId&gt;,
+    attempts: u32,
+    due_at: Option&lt;DateTime&lt;Utc&gt;&gt;,
+    evidence: Vec&lt;EvidenceRef&gt;,
+    result: Option&lt;WorkResult&gt;,
+    approval_state: ApprovalState,
+    created_at: DateTime&lt;Utc&gt;,
+    updated_at: DateTime&lt;Utc&gt;,
+}
+
+enum WorkStatus {
+    Proposed,
+    Ready,          // all dependencies met
+    Running,
+    Review,         // awaiting user/orchestrator review
+    Done,
+    Blocked(BlockReason),
+}
+
+enum AgentAssignment {
+    Primary,
+    Delegated { agent_class: AgentClass, session_id: SessionId },
+}
+
+enum ApprovalState {
+    NotRequired,
+    Pending,
+    Approved { by: ApprovalAuthority, at: DateTime&lt;Utc&gt; },
+    Rejected { reason: String },
+}
+
+/// Kanban is a PROJECTION, not the source of truth
+struct KanbanProjection {
+    columns: Vec&lt;KanbanColumn&gt;,
+}
+
+struct KanbanColumn {
+    name: String,
+    items: Vec&lt;WorkItemId&gt;,
+    wip_limit: Option&lt;usize&gt;,
+}
+
+impl KanbanProjection {
+    fn from_work_items(items: &amp;[WorkItem]) -&gt; Self {
+        // Map WorkStatus → columns:
+        //   Proposed → Backlog
+        //   Ready → Ready
+        //   Running → In Progress
+        //   Review → Review
+        //   Done → Done
+        //   Blocked → Blocked (separate column or overlay)
+        todo!()
+    }
+}
+
+trait WorkGraphService: Send + Sync {
+    fn create_goal(&amp;mut self, title: String, desc: String) -&gt; GoalId;
+    fn create_work_item(&amp;mut self, item: NewWorkItem) -&gt; WorkItemId;
+    fn transition(&amp;mut self, id: WorkItemId, to: WorkStatus) -&gt; Result&lt;(), WorkError&gt;;
+    fn assign(&amp;mut self, id: WorkItemId, assignee: AgentAssignment) -&gt; Result&lt;(), WorkError&gt;;
+    fn dependency_graph(&amp;self) -&gt; DependencyGraph;
+    fn ready_items(&amp;self) -&gt; Vec&lt;&amp;WorkItem&gt;;  // all deps met, not assigned
+    fn kanban(&amp;self) -&gt; KanbanProjection;
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-delegation">7. AgentSupervisor <span class="lang-tag">Rust crate: waywiser-delegation</span></h3>
+
+<pre><code class="language-rust">enum AgentClass {
+    Primary,            // full user-facing context
+    Leaf,               // focused context, CANNOT delegate
+    Orchestrator,       // may create children within budget
+    CognitionWorker,    // internal Brain work, NO external side effects
+    VerificationAgent,  // can inspect evidence, CANNOT mutate external state
+}
+
+struct DelegationBudget {
+    max_children: u8,           // default: 4
+    max_depth: u8,              // HARD CAP: 2
+    max_input_tokens: u64,      // per child
+    max_output_tokens: u64,     // per child
+    max_wall_time: Duration,    // per child
+    max_external_writes: u32,   // per child, CognitionWorker = 0
+}
+
+struct ChildAgent {
+    id: AgentId,
+    class: AgentClass,
+    session_id: SessionId,
+    parent_id: AgentId,
+    budget: DelegationBudget,
+    usage: DelegationUsage,
+    status: ChildAgentStatus,
+    work_item_id: Option&lt;WorkItemId&gt;,
+    created_at: DateTime&lt;Utc&gt;,
+}
+
+enum ChildAgentStatus {
+    Initializing,
+    Running,
+    WaitingForInference,   // queued behind higher-priority work
+    Completed(AgentResult),
+    Failed(AgentError),
+    Cancelled,
+    BudgetExceeded(BudgetViolation),
+}
+
+struct AgentSupervisor {
+    children: Vec&lt;ChildAgent&gt;,
+    inference_queue: PriorityQueue&lt;InferenceRequest&gt;,
+}
+
+impl AgentSupervisor {
+    /// Spawn a child — fails if budget/depth exceeded
+    fn spawn(&amp;mut self, class: AgentClass, context: FocusedContext,
+             budget: DelegationBudget, work_item: Option&lt;WorkItemId&gt;)
+        -&gt; Result&lt;AgentId, DelegationError&gt;;
+
+    /// Cancel a child agent
+    fn cancel(&amp;mut self, id: AgentId) -&gt; Result&lt;(), DelegationError&gt;;
+
+    /// Called when inference slot becomes available
+    fn schedule_next(&amp;mut self) -&gt; Option&lt;InferenceRequest&gt;;
+
+    /// Inference priority ordering
+    /// P0 interactive &gt; P1 foreground &gt; P2 delegated &gt; P3 reflection &gt; P4 evolution
+    fn queue_priority(class: &amp;AgentClass) -&gt; InferencePriority;
+}
+
+/// FocusedContext: subset of full context given to child agents
+struct FocusedContext {
+    task_description: String,
+    relevant_memories: Vec&lt;MemoryRef&gt;,
+    relevant_procedures: Vec&lt;ProcedureRef&gt;,
+    available_capabilities: Vec&lt;CapabilityName&gt;,
+    // Does NOT include full user conversation history
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-proactive">8. ProactiveEngine <span class="lang-tag">Rust crate: waywiser-proactive</span></h3>
+
+<pre><code class="language-rust">/// Basic OODA loop for proactive cognition
+struct ProactiveService {
+    signal_queue: Vec&lt;ProactiveSignal&gt;,
+    deferred_jobs: Vec&lt;DeferredReasoningJob&gt;,
+    rate_limiter: RateLimiter,
+    config: ProactiveConfig,
+}
+
+struct ProactiveConfig {
+    max_actions_per_hour: u32,      // default: 5
+    min_signal_confidence: f32,      // default: 0.7
+    deferred_job_ttl: Duration,      // default: 4 hours
+}
+
+struct ProactiveSignal {
+    id: SignalId,
+    source: SignalSource,
+    observation: ObservationId,
+    assessed_importance: f32,       // 0.0–1.0, deterministic
+    created_at: DateTime&lt;Utc&gt;,
+}
+
+enum SignalSource {
+    CalendarConflict(ConflictReport),
+    UpcomingDeadline { work_item: WorkItemId, due_in: Duration },
+    ImportantNotification(NotificationId),
+    ScheduledReminder(CronJobId),
+    BrainInsight(ExperienceId),
+}
+
+struct DeferredReasoningJob {
+    id: JobId,
+    cause: SignalSource,
+    created_at: DateTime&lt;Utc&gt;,
+    relevance_rule: RelevanceRule,
+    priority: InferencePriority,
+    context_refs: Vec&lt;ContextRef&gt;,
+}
+
+enum RelevanceRule {
+    TimeWindow { expires_at: DateTime&lt;Utc&gt; },
+    ConditionMet(String),                       // human-readable condition
+    Always,
+}
+
+impl ProactiveService {
+    /// OODA: Observe — ingest observation, assess signal importance
+    fn observe(&amp;mut self, obs: &amp;Observation) -&gt; Option&lt;ProactiveSignal&gt;;
+
+    /// OODA: Orient — deterministic filters (calendar, deadline, contacts)
+    fn orient(&amp;self, signal: &amp;ProactiveSignal) -&gt; OrientResult;
+
+    /// OODA: Decide — should we act? Rate limit check, priority check
+    fn decide(&amp;self, oriented: &amp;OrientResult) -&gt; ProactiveDecision;
+
+    /// OODA: Act — create deferred reasoning job or immediate notification
+    fn act(&amp;mut self, decision: ProactiveDecision) -&gt; Result&lt;(), ProactiveError&gt;;
+
+    /// Check deferred jobs: still relevant? Execute or expire
+    fn process_deferred(&amp;mut self) -&gt; Vec&lt;DeferredReasoningJob&gt;;
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-security">9. SecurityKernel — Full Implementation <span class="lang-tag">Rust crate: waywiser-security</span></h3>
+
+<p>This is the most critical component in the entire system. It implements blueprint invariant I2: <em>"LLMs may propose protected state transitions. They do not authorize them."</em></p>
+
+<h4>Authorization Flow</h4>
+<pre><code class="language-rust">/// The authorization pipeline — each step can only maintain or INCREASE risk
+impl SecurityKernel {
+    pub fn authorize(&amp;self, intent: &amp;ActionIntent) -&gt; SecurityDecision {
+        // Step 1: Capability exists?
+        let cap = match self.registry.get(&amp;intent.capability) {
+            Some(c) =&gt; c,
+            None =&gt; return SecurityDecision::Denied(
+                DenialReason::UnknownCapability(intent.capability.clone())
+            ),
+        };
+
+        // Step 2: Risk classification (from CapabilitySpec)
+        let risk = cap.risk;
+
+        // Step 3: Waywiser policy check
+        if let Some(denial) = self.policy.check(intent, &amp;cap) {
+            return SecurityDecision::Denied(denial);
+        }
+
+        // Step 4: OS permission available?
+        if let Some(os_perm) = &amp;cap.os_permission {
+            if !self.os_permissions.is_granted(os_perm) {
+                return SecurityDecision::Denied(
+                    DenialReason::OsPermissionMissing(os_perm.clone())
+                );
+            }
+        }
+
+        // Step 5: Active approval lease?
+        if let Some(lease) = self.find_valid_lease(intent) {
+            if lease.executions_used &lt; lease.max_executions {
+                return SecurityDecision::Allowed(AuthorizationSource::Lease(lease.id));
+            }
+            // Lease exhausted — fall through to approval required
+        }
+
+        // Step 6: Determine approval kind based on risk
+        match risk {
+            RiskLevel::ReadPersonal =&gt; SecurityDecision::Allowed(
+                AuthorizationSource::DefaultPolicy
+            ),
+            RiskLevel::DeviceControl
+            | RiskLevel::CrossAppWrite =&gt; SecurityDecision::RequiresApproval(
+                ApprovalKind::UserConfirm
+            ),
+            RiskLevel::Communication
+            | RiskLevel::Financial
+            | RiskLevel::Destructive =&gt; SecurityDecision::RequiresApproval(
+                ApprovalKind::BiometricConfirm
+            ),
+            RiskLevel::UiUnclassifiedWrite =&gt; SecurityDecision::RequiresApproval(
+                ApprovalKind::UserConfirm
+            ),
+        }
+    }
+}
+
+enum SecurityDecision {
+    Allowed(AuthorizationSource),
+    RequiresApproval(ApprovalKind),
+    Denied(DenialReason),
+}
+
+enum AuthorizationSource {
+    DefaultPolicy,
+    Lease(LeaseId),
+    UserApproval(DateTime&lt;Utc&gt;),
+    BiometricApproval(DateTime&lt;Utc&gt;),
+}
+
+enum ApprovalKind {
+    UserConfirm,        // tap "Allow"
+    BiometricConfirm,   // fingerprint / face + tap
+}
+
+enum DenialReason {
+    UnknownCapability(CapabilityName),
+    PolicyViolation(String),
+    OsPermissionMissing(String),
+    LeaseExpired(LeaseId),
+    BudgetExceeded { lease: LeaseId, used: u32, max: u32 },
+    InvariantViolation(&amp;'static str),
+}</code></pre>
+
+<h4>Approval Leases</h4>
+<pre><code class="language-rust">struct ApprovalLease {
+    id: LeaseId,
+    capability: CapabilityName,
+    scope: LeaseScope,
+    constraints: LeaseConstraints,
+    granted_by: AuthorizationSource,
+    granted_at: DateTime&lt;Utc&gt;,
+    valid_until: DateTime&lt;Utc&gt;,
+    max_executions: u32,
+    executions_used: u32,
+    revoked: bool,
+}
+
+struct LeaseScope {
+    account: Option&lt;String&gt;,        // e.g., "work" calendar
+    target: Option&lt;String&gt;,         // e.g., specific contact
+    action_subset: Option&lt;Vec&lt;String&gt;&gt;, // e.g., ["read", "update"]
+}
+
+struct LeaseConstraints {
+    forbid: Vec&lt;String&gt;,            // e.g., ["delete"]
+    max_per_hour: Option&lt;u32&gt;,
+    require_evidence: bool,
+}
+
+impl SecurityKernel {
+    fn find_valid_lease(&amp;self, intent: &amp;ActionIntent) -&gt; Option&lt;&amp;ApprovalLease&gt; {
+        self.leases.iter().find(|l| {
+            l.capability == intent.capability
+            &amp;&amp; !l.revoked
+            &amp;&amp; l.valid_until &gt; Utc::now()
+            &amp;&amp; l.scope.matches(intent)
+            &amp;&amp; !l.constraints.forbids(intent)
+        })
+    }
+
+    fn grant_lease(&amp;mut self, lease: ApprovalLease) -&gt; LeaseId;
+    fn revoke_lease(&amp;mut self, id: LeaseId);
+    fn record_execution(&amp;mut self, lease_id: LeaseId) -&gt; Result&lt;(), DenialReason&gt;;
+}
+
+/// Audit trail — every authorization decision is recorded
+struct AuditEntry {
+    id: AuditId,
+    intent_id: Uuid,
+    decision: SecurityDecision,
+    capability: CapabilityName,
+    risk: RiskLevel,
+    timestamp: DateTime&lt;Utc&gt;,
+    lease_id: Option&lt;LeaseId&gt;,
+}</code></pre>
+
+<h4>Security Kernel Invariants (property-tested)</h4>
+<div class="spec-table">
+<table>
+  <thead><tr><th>Invariant</th><th>Test Strategy</th></tr></thead>
+  <tbody>
+    <tr><td>Unknown capability → Denied (never executes)</td><td>Fuzz random CapabilityNames against registry</td></tr>
+    <tr><td>Risk can only stay same or increase through pipeline</td><td>Property test: classify N intents, verify monotonic risk</td></tr>
+    <tr><td>Expired lease → cannot authorize</td><td>Time-travel property test</td></tr>
+    <tr><td>Exhausted lease budget → cannot authorize</td><td>Property test: exceed max_executions</td></tr>
+    <tr><td>No LLM involvement in authorization path</td><td>Static analysis: no InferenceBackend dependency</td></tr>
+    <tr><td>Planning cannot bypass permission</td><td>Mutation test: remove check steps, verify tests fail</td></tr>
+    <tr><td>Every decision creates AuditEntry</td><td>Property test: authorize N intents, verify N audit entries</td></tr>
+    <tr><td>Revoked lease → cannot authorize even if within time/budget</td><td>Regression test</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-ledger">10. ActivityLedger <span class="lang-tag">Kotlin + Rust</span></h3>
+
+<pre><code class="language-rust">/// User-facing record of an executed action
+struct LedgerEntry {
+    id: LedgerId,
+    receipt: ActionReceipt,
+    display: LedgerDisplay,
+    created_at: DateTime&lt;Utc&gt;,
+}
+
+struct LedgerDisplay {
+    summary: String,            // "Rescheduled dentist appointment"
+    reason: String,             // "Conflict with flight"
+    authority: String,          // "Calendar lease valid until 20:00"
+    verification: String,       // "External calendar confirmed"
+    can_undo: bool,
+    can_revoke_automation: bool,
+}
+
+trait LedgerService: Send + Sync {
+    fn record(&amp;mut self, receipt: ActionReceipt) -&gt; LedgerId;
+    fn entries(&amp;self, limit: usize, offset: usize) -&gt; Vec&lt;LedgerEntry&gt;;
+    fn undo(&amp;mut self, id: LedgerId) -&gt; Result&lt;ActionReceipt, LedgerError&gt;;
+    fn revoke_automation(&amp;mut self, id: LedgerId) -&gt; Result&lt;(), LedgerError&gt;;
+    // revoke_automation: finds the lease that authorized this action and revokes it
+}</code></pre>
+
+<pre><code class="language-kotlin">@Composable
+fun LedgerScreen(viewModel: LedgerViewModel) {
+    LazyColumn {
+        items(viewModel.entries) { entry -&gt;
+            LedgerCard(
+                summary = entry.display.summary,
+                reason = entry.display.reason,
+                authority = entry.display.authority,
+                verification = entry.display.verification,
+                onUndo = if (entry.display.can_undo) {{ viewModel.undo(entry.id) }} else null,
+                onRevokeAutomation = if (entry.display.can_revoke_automation) {
+                    { viewModel.revokeAutomation(entry.id) }
+                } else null,
+            )
+        }
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-trust">11. TrustCenter <span class="lang-tag">Kotlin</span></h3>
+
+<pre><code class="language-kotlin">/// Main trust/permission management UI
+@Composable
+fun TrustCenterScreen(viewModel: TrustCenterViewModel) {
+    // Tabs: Active Leases | Capabilities | History
+    TabRow(selectedTabIndex = viewModel.selectedTab) { /* ... */ }
+
+    when (viewModel.selectedTab) {
+        0 -&gt; ActiveLeasesTab(viewModel.activeLeases)
+        1 -&gt; CapabilitiesTab(viewModel.capabilities)
+        2 -&gt; HistoryTab(viewModel.auditLog)
+    }
+}
+
+/// Lease card with expiry countdown
+@Composable
+fun LeaseCard(lease: ApprovalLease) {
+    Card {
+        Text(lease.capability.displayName)
+        // Color-coded risk badge
+        RiskBadge(lease.risk)
+        // Countdown to expiry
+        Text("Expires ${lease.valid_until.humanRelative()}")
+        // Usage: 3/5 executions used
+        LinearProgressIndicator(lease.executionsUsed.toFloat() / lease.maxExecutions)
+        // Revoke button
+        TextButton(onClick = { viewModel.revokeLease(lease.id) }) { Text("Revoke") }
+    }
+}
+
+/// Approval flow — triggered by SecurityDecision.RequiresApproval
+class ApprovalActivity : ComponentActivity() {
+    // Shows: what action, why, what risk, which capability
+    // For BiometricConfirm: BiometricPrompt first, then confirm
+    // For UserConfirm: single "Allow" / "Allow for 1 hour" / "Deny"
+    // "Allow for 1 hour" creates an ApprovalLease
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-updater">12. APKUpdater <span class="lang-tag">Kotlin</span></h3>
+
+<pre><code class="language-kotlin">data class UpdateManifest(
+    val version: String,        // "2.4.1"
+    val versionCode: Int,       // 20401
+    val sha256: String,
+    val channel: UpdateChannel,
+    val minSupportedVersion: String,
+    val signature: String,      // detached Ed25519 signature of manifest JSON
+)
+
+enum class UpdateChannel { Dev, Canary, Beta, Stable }
+
+class UpdateManager(
+    private val gitlabBaseUrl: String,
+    private val publicKey: Ed25519PublicKey,  // hardcoded in APK for manifest verification
+) {
+    /// Check for updates — called periodically via WorkManager
+    suspend fun checkForUpdate(currentVersion: String, channel: UpdateChannel): UpdateResult
+
+    /// Verification pipeline (§72):
+    /// 1. Fetch manifest from GitLab release
+    /// 2. Verify manifest signature with hardcoded public key
+    /// 3. Download APK
+    /// 4. Verify APK SHA-256 matches manifest
+    /// 5. Verify APK signing certificate matches expected
+    /// 6. Prompt user to install
+    suspend fun downloadAndVerify(manifest: UpdateManifest): VerifiedApk
+
+    /// Safe mode (§74): if 3+ startup crashes in a row
+    /// Disable: agent runtime, Accessibility, camera, voice, MCP, background jobs
+    /// Enable: diagnostics, update check, basic UI
+    fun enterSafeMode()
+}
+
+sealed interface UpdateResult {
+    data class Available(val manifest: UpdateManifest) : UpdateResult
+    data object UpToDate : UpdateResult
+    data class Error(val reason: String) : UpdateResult
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-offline">13. OfflineManager <span class="lang-tag">Rust + Kotlin</span></h3>
+
+<pre><code class="language-rust">/// Inference endpoint availability
+enum InferenceStatus {
+    Available { latency_ms: u32 },
+    Degraded { latency_ms: u32, error_rate: f32 },
+    Unavailable { since: DateTime&lt;Utc&gt;, last_error: String },
+}
+
+/// What works in each connectivity state (§67)
+struct CapabilityAvailability {
+    capture: bool,                  // always true
+    local_memory: bool,             // always true
+    lexical_recall: bool,           // always true
+    cached_calendar: bool,          // true if recently synced
+    deterministic_automations: bool,// always true
+    work_state: bool,               // always true
+    activity_ledger: bool,          // always true
+    deliberative_conversation: bool,// requires inference
+    brain_reflection: bool,         // requires inference
+    skill_compilation: bool,        // requires inference
+    research: bool,                 // requires inference + network
+    vlm_reasoning: bool,            // requires inference
+}
+
+impl CapabilityAvailability {
+    fn from_status(status: &amp;InferenceStatus) -&gt; Self {
+        let inference_ok = matches!(status, InferenceStatus::Available { .. });
+        Self {
+            capture: true,
+            local_memory: true,
+            lexical_recall: true,
+            cached_calendar: true,
+            deterministic_automations: true,
+            work_state: true,
+            activity_ledger: true,
+            deliberative_conversation: inference_ok,
+            brain_reflection: inference_ok,
+            skill_compilation: inference_ok,
+            research: inference_ok, // also needs general network
+            vlm_reasoning: inference_ok,
+        }
+    }
+}
+
+/// Deferred work queue — persists jobs for when inference returns
+struct DeferredQueue {
+    jobs: Vec&lt;DeferredReasoningJob&gt;,
+}
+
+impl DeferredQueue {
+    fn enqueue(&amp;mut self, job: DeferredReasoningJob);
+    /// Process all relevant jobs when inference returns
+    fn drain_ready(&amp;mut self) -&gt; Vec&lt;DeferredReasoningJob&gt;;
+}</code></pre>
+
+<pre><code class="language-kotlin">/// Kotlin-side connectivity monitoring
+class ConnectivityMonitor(context: Context) {
+    val networkStatus: StateFlow&lt;NetworkStatus&gt;
+    val inferenceStatus: StateFlow&lt;InferenceStatus&gt;
+
+    // Register ConnectivityManager.NetworkCallback
+    // Periodically ping inference endpoint (every 30s when degraded)
+    // Update Rust-side InferenceStatus via FFI
+}
+
+/// Degraded state UI indicator
+@Composable
+fun DegradedBanner(availability: CapabilityAvailability) {
+    if (!availability.deliberative_conversation) {
+        Surface(color = MaterialTheme.colorScheme.errorContainer) {
+            Row {
+                Icon(Icons.Default.CloudOff)
+                Text("Offline — capture and memory available, conversation paused")
+            }
+        }
+    }
+}</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<h3 id="p1-acceptance">P1 Acceptance Criteria</h3>
+
+<ol class="acceptance-criteria">
+  <li><strong>Voice end-to-end:</strong> User activates mic → speaks query → STT transcribes → Pi agent processes → streamed response → TTS plays answer. Measured latency from speech-end to first TTS audio &lt; 3s on company network.</li>
+  <li><strong>Barge-in:</strong> During TTS playback, user speaks → TTS stops within 200ms → new utterance captured → Pi receives steer event → new response streams.</li>
+  <li><strong>Notification classification:</strong> Notification from user-designated important contact → classified as minimum NOTIFY regardless of app-declared priority. Routine CI bot notification → capped at configured ceiling.</li>
+  <li><strong>Calendar mutation flow:</strong> Voice command "Move my dentist to Thursday" → ActionIntent(calendar.update) → SecurityKernel authorizes (lease or user confirm) → calendar updated → ActionReceipt → visible in ActivityLedger with undo button.</li>
+  <li><strong>Share sheet capture:</strong> User shares text/URL/image from any app → ShareActivity receives → Observation created with RetentionClass.Experience → available in memory recall.</li>
+  <li><strong>Delegation cycle:</strong> WorkItem created → assigned to Leaf agent → agent completes within budget → result stored → status transitions to Review → user reviews → marked Done.</li>
+  <li><strong>Proactive conflict detection:</strong> Two calendar events overlap → ProactiveEngine detects via CalendarService.conflicts() → user notified with suggested resolution.</li>
+  <li><strong>APK update verification:</strong> New release on GitLab → UpdateManager fetches manifest → verifies Ed25519 signature → downloads APK → verifies SHA-256 → verifies APK signing cert → prompts user to install. Tampered manifest or APK → rejected with clear error.</li>
+  <li><strong>Offline graceful degradation:</strong> Network disconnects → UI shows degraded banner within 5s → captures continue → memory writes continue → conversation shows "offline" → network returns → DeferredQueue drains → banner clears.</li>
+  <li><strong>Background reliability:</strong> BackgroundReliabilityManager schedules probe → measures actual vs expected execution time → classifies device health → health reported in TrustCenter → if SeverelyRestricted, user guided to battery optimization settings.</li>
+  <li><strong>Security denial:</strong> Agent proposes action with unknown capability → SecurityKernel returns Denied(UnknownCapability) → no side effect occurs → AuditEntry recorded → user not disturbed.</li>
+  <li><strong>Lease lifecycle:</strong> User grants 1-hour calendar.update lease → executions succeed → lease expires → next calendar.update requires fresh approval → confirmed via AuditEntry timestamps.</li>
+  <li><strong>Daily soak test:</strong> 8 hours of mixed use (voice, text, background, notifications) → battery drain attributable to Waywiser &lt; 15% → zero ANR → zero crash → memory stable (no leak trend in heap profiling).</li>
+  <li><strong>Process death recovery:</strong> Kill Waywiser process during active voice session → user relaunches → app recovers session from SQLite → shows last conversation state → can resume interaction without data loss.</li>
+  <li><strong>Safe mode:</strong> Simulate 3 consecutive startup crashes → app enters safe mode → disables agent runtime, Accessibility, voice, background → update check works → diagnostics accessible → user can exit safe mode.</li>
+</ol>
+
+</div>

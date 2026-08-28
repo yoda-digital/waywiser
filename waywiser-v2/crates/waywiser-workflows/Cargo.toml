@@ -1,0 +1,16 @@
+[package]
+name = "waywiser-workflows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pi-types = { path = "../pi-types" }
+waywiser-security = { path = "../waywiser-security" }
+waywiser-automation = { path = "../waywiser-automation" }
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true

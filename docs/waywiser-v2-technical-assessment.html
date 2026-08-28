@@ -1,0 +1,851 @@
+<title>Waywiser v2 Technical Assessment</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --ground: #F5F6FA;
+  --surface: #FFFFFF;
+  --surface-alt: #EEF0F6;
+  --text: #1A2332;
+  --text-secondary: #4A5568;
+  --text-muted: #718096;
+  --accent: #2563EB;
+  --accent-soft: #DBEAFE;
+  --risk-high: #DC2626;
+  --risk-high-bg: #FEF2F2;
+  --risk-medium: #D97706;
+  --risk-medium-bg: #FFFBEB;
+  --risk-low: #059669;
+  --risk-low-bg: #ECFDF5;
+  --border: #D8DCE6;
+  --border-light: #E8ECF2;
+  --code-bg: #F0F2F8;
+  --finding-stripe: #2563EB;
+  --table-head: #F0F2F8;
+  --table-row-alt: #FAFBFD;
+  --blockquote-border: #CBD5E1;
+  --shadow: rgba(15, 23, 42, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0B1120;
+    --surface: #131D30;
+    --surface-alt: #1A2740;
+    --text: #E2E8F0;
+    --text-secondary: #A0AEC0;
+    --text-muted: #718096;
+    --accent: #60A5FA;
+    --accent-soft: #1E3A5F;
+    --risk-high: #F87171;
+    --risk-high-bg: #2D1215;
+    --risk-medium: #FBBF24;
+    --risk-medium-bg: #2D2410;
+    --risk-low: #34D399;
+    --risk-low-bg: #0D2818;
+    --border: #2A3650;
+    --border-light: #1E2D44;
+    --code-bg: #1A2740;
+    --finding-stripe: #60A5FA;
+    --table-head: #1A2740;
+    --table-row-alt: #111B2E;
+    --blockquote-border: #475569;
+    --shadow: rgba(0, 0, 0, 0.3);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground: #0B1120;
+  --surface: #131D30;
+  --surface-alt: #1A2740;
+  --text: #E2E8F0;
+  --text-secondary: #A0AEC0;
+  --text-muted: #718096;
+  --accent: #60A5FA;
+  --accent-soft: #1E3A5F;
+  --risk-high: #F87171;
+  --risk-high-bg: #2D1215;
+  --risk-medium: #FBBF24;
+  --risk-medium-bg: #2D2410;
+  --risk-low: #34D399;
+  --risk-low-bg: #0D2818;
+  --border: #2A3650;
+  --border-light: #1E2D44;
+  --code-bg: #1A2740;
+  --finding-stripe: #60A5FA;
+  --table-head: #1A2740;
+  --table-row-alt: #111B2E;
+  --blockquote-border: #475569;
+  --shadow: rgba(0, 0, 0, 0.3);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: 'IBM Plex Sans', -apple-system, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.container {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+/* Header */
+.doc-header {
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 2rem;
+  margin-bottom: 3rem;
+}
+
+.doc-header h1 {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 2.2rem;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+  text-wrap: balance;
+}
+
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.doc-meta span { white-space: nowrap; }
+
+/* Section headers */
+h2 {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 400;
+  color: var(--text);
+  margin: 3rem 0 1.25rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-light);
+  text-wrap: balance;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 2rem 0 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+h4 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 1.5rem 0 0.5rem;
+}
+
+p { margin-bottom: 0.85rem; max-width: 68ch; }
+
+strong { font-weight: 600; }
+
+/* Executive summary card */
+.exec-summary {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1.75rem;
+  margin-bottom: 2.5rem;
+  box-shadow: 0 1px 3px var(--shadow);
+}
+
+.exec-summary h2 {
+  margin-top: 0;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 1rem;
+}
+
+.verdict-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.verdict-item {
+  padding: 0.85rem 1rem;
+  border-radius: 5px;
+  border-left: 3px solid;
+}
+
+.verdict-item.positive { background: var(--risk-low-bg); border-color: var(--risk-low); }
+.verdict-item.warning { background: var(--risk-medium-bg); border-color: var(--risk-medium); }
+.verdict-item.critical { background: var(--risk-high-bg); border-color: var(--risk-high); }
+
+.verdict-item .v-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.verdict-item .v-text {
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+/* Finding cards */
+.finding {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--finding-stripe);
+  border-radius: 0 5px 5px 0;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 2px var(--shadow);
+}
+
+.finding.critical { border-left-color: var(--risk-high); }
+.finding.warning { border-left-color: var(--risk-medium); }
+.finding.positive { border-left-color: var(--risk-low); }
+
+.finding-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.risk-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.risk-badge.high { background: var(--risk-high-bg); color: var(--risk-high); }
+.risk-badge.medium { background: var(--risk-medium-bg); color: var(--risk-medium); }
+.risk-badge.low { background: var(--risk-low-bg); color: var(--risk-low); }
+
+.finding-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.finding p { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.finding p:last-child { margin-bottom: 0; }
+
+/* Tables */
+.table-wrap {
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.87rem;
+  font-variant-numeric: tabular-nums;
+}
+
+thead { background: var(--table-head); }
+
+th {
+  text-align: left;
+  padding: 0.65rem 0.85rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+
+tr:nth-child(even) td { background: var(--table-row-alt); }
+
+td:first-child { font-weight: 500; color: var(--text); }
+
+/* Code */
+code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.85em;
+  background: var(--code-bg);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 1rem 0 1.5rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+pre code { background: none; padding: 0; color: inherit; }
+
+/* Blockquotes */
+blockquote {
+  border-left: 3px solid var(--blockquote-border);
+  padding: 0.5rem 1rem;
+  margin: 1rem 0 1.5rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Lists */
+ul, ol {
+  margin: 0.5rem 0 1.25rem 1.5rem;
+  color: var(--text-secondary);
+}
+
+li { margin-bottom: 0.35rem; font-size: 0.92rem; }
+li strong { color: var(--text); }
+
+/* Section divider */
+.section-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3rem 0;
+  border: none;
+}
+
+/* Corrections */
+.correction {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.correction-box {
+  padding: 1rem;
+  border-radius: 5px;
+  font-size: 0.88rem;
+}
+
+.correction-box.before {
+  background: var(--risk-high-bg);
+  border: 1px solid var(--risk-high);
+}
+
+.correction-box.after {
+  background: var(--risk-low-bg);
+  border: 1px solid var(--risk-low);
+}
+
+.correction-box .cb-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.4rem;
+}
+
+.correction-box.before .cb-label { color: var(--risk-high); }
+.correction-box.after .cb-label { color: var(--risk-low); }
+.correction-box p { font-size: 0.88rem; margin-bottom: 0.3rem; }
+
+/* Action items */
+.action-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.action-item:last-child { border-bottom: none; }
+
+.action-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.action-body { font-size: 0.92rem; }
+.action-body strong { color: var(--text); }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .container { padding: 1.25rem 1rem 3rem; }
+  .doc-header h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.25rem; }
+  .correction { grid-template-columns: 1fr; }
+  .verdict-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="container">
+
+<header class="doc-header">
+  <h1>Waywiser v2 Blueprint &mdash; Technical Due Diligence</h1>
+  <div class="doc-meta">
+    <span>28 August 2026</span>
+    <span>6 research tracks</span>
+    <span>Against: mobile_original_idea.md (89 sections)</span>
+    <span>Internal use only</span>
+  </div>
+</header>
+
+<!-- EXECUTIVE SUMMARY -->
+<div class="exec-summary">
+  <h2>Executive Summary</h2>
+  <p>The Waywiser v2 blueprint is an architecturally rigorous design for a native Android personal intelligence runtime. Its security model, observation pipeline, and delivery tiering are production-grade thinking. Six parallel deep-research tracks validated every major technical assumption against current (August 2026) ecosystem state. The blueprint is <strong>broadly sound</strong>, but research surfaced <strong>5 findings that require blueprint revision</strong> and <strong>3 high-risk items that need empirical validation</strong> before engineering commits.</p>
+
+  <div class="verdict-grid">
+    <div class="verdict-item positive">
+      <div class="v-label">Architecture</div>
+      <div class="v-text">Security model, observation pipeline, delivery tiers &mdash; all sound</div>
+    </div>
+    <div class="verdict-item positive">
+      <div class="v-label">Pi Porting</div>
+      <div class="v-text">~10.5K LOC core surface, conformance test suite already exists</div>
+    </div>
+    <div class="verdict-item warning">
+      <div class="v-label">Model Risk</div>
+      <div class="v-text">Qwen3.8-27B capable but Romanian language unvalidated</div>
+    </div>
+    <div class="verdict-item critical">
+      <div class="v-label">Blueprint Errors</div>
+      <div class="v-text">AppFunctions unavailable, ECM blocks AccessibilityService, single-slot is a config not a constraint</div>
+    </div>
+  </div>
+</div>
+
+<!-- 1. PI ECOSYSTEM -->
+<h2>1. Pi Ecosystem &mdash; Porting Surface Analysis</h2>
+
+<p>Pi (<code>github.com/earendil-works/pi</code>) is a ~292K LOC TypeScript monorepo with 10 packages. The actual porting surface for Waywiser v2 is dramatically smaller than the full codebase.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Package</th><th>LOC</th><th>Port?</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td>agent-core</td><td>~24K</td><td>Yes (core)</td><td>Agent loop, state machine, sessions, compaction</td></tr>
+    <tr><td>ai</td><td>~70K</td><td>Partial (~1.5K)</td><td>Only OpenAI-compatible transport needed</td></tr>
+    <tr><td>coding-agent</td><td>~143K</td><td>No</td><td>CLI harness, TUI, tools &mdash; replaced by Android</td></tr>
+    <tr><td>tui</td><td>~38K</td><td>No</td><td>Terminal rendering &mdash; replaced by Compose</td></tr>
+    <tr><td>protocol</td><td>~2K</td><td>Yes</td><td>CBOR codec, wire schemas</td></tr>
+    <tr><td>session-backends</td><td>~5K</td><td>~1.1K</td><td>SQLite adapter pattern (new Rust impl)</td></tr>
+    <tr><td>server / client / telemetry / evals</td><td>~10K</td><td>No</td><td>Not needed for Android runtime</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Actual porting surface: ~10,500 LOC TypeScript &rarr; ~15,000 LOC Rust</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Component</th><th>TS LOC</th><th>Est. Rust</th><th>Complexity</th></tr></thead>
+  <tbody>
+    <tr><td>Agent loop + types</td><td>~2,000</td><td>~3,000</td><td>Medium</td></tr>
+    <tr><td>Session state machine (lanes, branches)</td><td>~1,200</td><td>~2,000</td><td>High</td></tr>
+    <tr><td>Reducer / recovery FSM</td><td>~750</td><td>~1,500</td><td>Highest</td></tr>
+    <tr><td>Compaction</td><td>~1,000</td><td>~1,500</td><td>Medium-High</td></tr>
+    <tr><td>Session types (13+ record types)</td><td>~400</td><td>~800</td><td>Medium</td></tr>
+    <tr><td>Session storage (SQLite)</td><td>~1,100</td><td>~1,500</td><td>Medium</td></tr>
+    <tr><td>Provider API (OpenAI-compat only)</td><td>~1,500</td><td>~2,000</td><td>Medium</td></tr>
+    <tr><td>Message types + transforms</td><td>~500</td><td>~1,000</td><td>Low</td></tr>
+    <tr><td>Protocol (CBOR/framing)</td><td>~2,000</td><td>~1,500</td><td>Low</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="finding positive">
+  <div class="finding-head">
+    <span class="risk-badge low">Key finding</span>
+    <span class="finding-title">Pi has a cross-backend conformance test suite</span>
+  </div>
+  <p><code>agent/src/harness/session/testing/conformance.ts</code> (1,221 LOC) is designed to validate <em>any</em> session storage implementation against canonical semantics. It takes a <code>SessionBackendFixtureFactory</code> and runs identical tests against any backend. This is exactly the foundation blueprint &sect;8 needs for differential Rust conformance testing.</p>
+</div>
+
+<div class="finding warning">
+  <div class="finding-head">
+    <span class="risk-badge medium">Watch</span>
+    <span class="finding-title">The reducer is the hardest porting target</span>
+  </div>
+  <p>The <code>reducer.ts</code> (744 LOC) contains the recovery FSM with corruption detection, TOCTOU guards, and complex queue semantics (steer/followUp/nextRun/deferred). This 750 LOC of TypeScript will become ~1,500 LOC of Rust due to explicit error handling and contains the densest invariants in the entire system.</p>
+</div>
+
+<hr class="section-divider">
+
+<!-- 2. QWEN -->
+<h2>2. Qwen3.8-27B &mdash; Model Capability Assessment</h2>
+
+<p>Released August 14, 2026. 28B dense parameters, hybrid attention, 262K native context (extensible to ~1M via YaRN). Apache 2.0 license. Multimodal (text + images + video).</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Dimension</th><th>Rating</th><th>Evidence</th></tr></thead>
+  <tbody>
+    <tr><td>Tool / function calling</td><td><strong>Strong</strong></td><td>BFCL-V4: Qwen3.7 Max leads at 0.750; 27B variant ~0.685. Native <code>tools</code> + <code>tool_choice</code></td></tr>
+    <tr><td>Agentic coding</td><td><strong>Very strong</strong></td><td>SWE-Bench Pro 61.7%, Terminal-Bench 73.0%, OSWorld 84.3%</td></tr>
+    <tr><td>Structured output</td><td><strong>Supported</strong></td><td><code>response_format</code> with JSON schema. Community reports solid adherence</td></tr>
+    <tr><td>Vision / multimodal</td><td><strong>Yes</strong></td><td>Native encoder. MathVision 94.6, CharXiv 90.2</td></tr>
+    <tr><td>Thinking / reasoning</td><td><strong>Yes, needs tuning</strong></td><td>Hybrid <code>&lt;think&gt;</code> blocks. Defaults to overthinking. Controllable via <code>reasoning_effort</code></td></tr>
+    <tr><td>Context window</td><td><strong>262K native</strong></td><td>Blueprint's 65K operational budget is conservative and appropriate</td></tr>
+    <tr><td>GGUF / Ollama</td><td><strong>Fully supported</strong></td><td>Unsloth Dynamic v3.0 GGUFs. Q4_K_M on single 24GB GPU. 20&ndash;40 tok/s</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="finding critical">
+  <div class="finding-head">
+    <span class="risk-badge high">High risk</span>
+    <span class="finding-title">Romanian language quality unvalidated</span>
+  </div>
+  <p>Qwen3 shows "significant quality drops" on lower-resource languages and "garbled or repeated output" at the tail. Romanian is not in Qwen3's tier-1 language set. English and Russian are solid, but Romanian quality for processing calendar entries, notifications, and messages is <strong>unconfirmed</strong>. This must be validated empirically before committing the product to this model.</p>
+</div>
+
+<div class="finding warning">
+  <div class="finding-head">
+    <span class="risk-badge medium">Medium risk</span>
+    <span class="finding-title">Default overthinking wastes the single inference slot</span>
+  </div>
+  <p>The model defaults to "wildly overthinking" (community consensus). For an agentic loop with tool calls, this means wasted tokens and latency &mdash; directly harmful when the inference slot is shared. Mitigation exists (<code>reasoning_effort: medium/low</code>, thinking budgets) but must be integrated into the Pi agent loop from day one, not retrofitted.</p>
+</div>
+
+<div class="finding positive">
+  <div class="finding-head">
+    <span class="risk-badge low">Positive</span>
+    <span class="finding-title">Strongest open 27B model for this workload</span>
+  </div>
+  <p>Qwen3.8-27B is the best available open model at this parameter count for agentic work. The single-model invariant (I6) is architecturally sound <em>if</em> read as "one authoritative model instance at a time" with a tested upgrade path &mdash; not "this model identity forever." The model alias architecture (&sect;40) correctly abstracts this.</p>
+</div>
+
+<hr class="section-divider">
+
+<!-- 3. FFI -->
+<h2>3. Kotlin&harr;Rust FFI &mdash; Bridge Architecture</h2>
+
+<p><strong>UniFFI v0.32.0</strong> (June 2026, Mozilla) is the production-grade choice. Used by Signal (<code>libsignal</code>), Firefox Android, Mozilla VPN. Generates Kotlin bindings from Rust interface definitions.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>&sect;78 Requirement</th><th>Solution</th><th>Effort</th></tr></thead>
+  <tbody>
+    <tr><td>Streaming events</td><td>tokio mpsc channel &rarr; UniFFI <code>suspend fun nextEvent()</code> or async callback trait</td><td>~2 weeks</td></tr>
+    <tr><td>Cancellation</td><td><code>CancellationToken</code> in Rust, signaled from Kotlin via separate FFI call</td><td>Low</td></tr>
+    <tr><td>Activity destruction</td><td>ViewModel survives config changes; cancel from <code>onCleared()</code></td><td>Medium</td></tr>
+    <tr><td>Process recreation</td><td>All durable state in SQLite. Rust re-initializes from DB on restart</td><td>High</td></tr>
+    <tr><td>Panic containment</td><td><code>catch_unwind</code> at every FFI boundary + <code>panic = "unwind"</code></td><td>Critical discipline</td></tr>
+    <tr><td>Large payloads</td><td>v0.32 zero-copy <code>ByteBuffer</code></td><td>Low</td></tr>
+    <tr><td>Backpressure</td><td>Bounded tokio mpsc channels</td><td>Low</td></tr>
+    <tr><td>JNI ref leakage</td><td>UniFFI manages most; <code>uniffiIsDestroyed</code> (v0.32) for custom callbacks</td><td>Ongoing</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="finding warning">
+  <div class="finding-head">
+    <span class="risk-badge medium">Gap</span>
+    <span class="finding-title">UniFFI has no native streaming primitive</span>
+  </div>
+  <p>There is no Rust <code>Stream</code> &rarr; Kotlin <code>Flow</code> bridge built into UniFFI. The agent event stream must be built manually: either a polling <code>suspend fun</code> over a bounded channel, or a push pattern via async callback trait. Recommend a <strong>hybrid approach</strong>: UniFFI for the bulk API surface (memory, Brain, skills, permissions); hand-rolled JNI for the streaming event bridge where you need fine-grained backpressure and cancellation control.</p>
+</div>
+
+<div class="finding critical">
+  <div class="finding-head">
+    <span class="risk-badge high">Critical discipline</span>
+    <span class="finding-title">One missed catch_unwind = instant production crash</span>
+  </div>
+  <p>UniFFI does <strong>not</strong> catch Rust panics. A panic in a JNI callback aborts the entire Android process. Every FFI entry point must be wrapped in <code>std::panic::catch_unwind</code> with panics converted to errors. Set <code>panic = "unwind"</code> in Cargo.toml (never <code>abort</code>). This must be enforced by CI lint, not developer memory.</p>
+</div>
+
+<h3>Estimated FFI bridge effort: 6&ndash;8 weeks</h3>
+<p>For a senior engineer familiar with both Kotlin and Rust. The 90-day vertical spike should dedicate ~40% to this bridge. Start single-process (topology A); measure before splitting.</p>
+
+<h4>Precedent project</h4>
+<p><strong>Operit</strong> (<code>github.com/AAswordman/Operit</code>) &mdash; an open-source Rust runtime + Android AI agent with llama.cpp/MNN support. Closest existing architecture to Waywiser v2.</p>
+
+<hr class="section-divider">
+
+<!-- 4. EDGE ML -->
+<h2>4. Android Edge ML &amp; Background Execution</h2>
+
+<h3>Edge model candidates</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Candidate</th><th>Params</th><th>Memory</th><th>Speed (Android GPU)</th><th>Function Calling</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Gemma 4 E2B</strong> (LiteRT-LM)</td><td>2.3B eff.</td><td>676 MB peak</td><td>52 tok/s (S26, OpenCL)</td><td>Native, constrained</td></tr>
+    <tr><td>FunctionGemma 270M</td><td>270M</td><td>~350 MB</td><td>126 tok/s (CPU)</td><td>Specialized, 85% acc.</td></tr>
+    <tr><td>Qwen3-0.6B (GGUF)</td><td>600M</td><td>~900 MB</td><td>~25 tok/s (Vulkan est.)</td><td>Possible, not specialized</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="finding positive">
+  <div class="finding-head">
+    <span class="risk-badge low">Recommendation</span>
+    <span class="finding-title">Gemma 4 E2B replaces blueprint candidates</span>
+  </div>
+  <p>Gemma 4 E2B via LiteRT-LM outperforms all three candidates listed in the blueprint (&sect;52). It matches Gemma 3 27B quality at 10x fewer parameters, has native function calling with constrained decoding, and fits within the S21+ memory budget (676 MB leaves ~3.5 GB for OS + app). Avoid llama.cpp Vulkan on Exynos/Mali &mdash; community reports poor performance and driver instability.</p>
+</div>
+
+<h3>Background execution strategy</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Work Type</th><th>Mechanism</th><th>Timeout</th><th>OEM Risk</th></tr></thead>
+  <tbody>
+    <tr><td>Interactive inference</td><td>Foreground service (<code>specialUse</code>)</td><td>None</td><td>Low</td></tr>
+    <tr><td>Brain reflection (P3)</td><td>WorkManager (expedited)</td><td>OS-deferred</td><td>High on Xiaomi/OPPO</td></tr>
+    <tr><td>Scheduled cron</td><td>AlarmManager (exact)</td><td><code>SCHEDULE_EXACT_ALARM</code></td><td>Medium</td></tr>
+    <tr><td>Proactive checks</td><td>WorkManager (periodic, 15min min)</td><td>OS-deferred</td><td>High</td></tr>
+    <tr><td>Delegation (P2)</td><td>Foreground service during active work</td><td>None</td><td>Low</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="finding warning">
+  <div class="finding-head">
+    <span class="risk-badge medium">Watch</span>
+    <span class="finding-title">Do not use dataSync or mediaProcessing foreground service types</span>
+  </div>
+  <p>Both have a <strong>6-hour timeout per 24-hour period</strong> on Android 14+ that would kill Brain reflection. Use <code>specialUse</code> FGS type for LLM inference. Since this is an internal APK (no Play Store review), the justification declaration is sufficient. Internal distribution also allows mandating battery optimization exemption via MDM, neutralizing OEM background killing.</p>
+</div>
+
+<hr class="section-divider">
+
+<!-- 5. OLLAMA -->
+<h2>5. Inference Serving Infrastructure</h2>
+
+<div class="finding critical">
+  <div class="finding-head">
+    <span class="risk-badge high">Blueprint correction</span>
+    <span class="finding-title">Single-slot is a configuration, not a constraint</span>
+  </div>
+  <p>Blueprint &sect;43 frames single-slot as a foundational limitation. In fact, <code>OLLAMA_NUM_PARALLEL</code> (default: 1) is configurable. At 2&ndash;4 slots, expect 20&ndash;40% per-request latency increase but 3&ndash;4x throughput. For Qwen 27B Q4_K_M (~19GB at 8K ctx), 2 parallel slots on a 48GB GPU (A6000) is feasible.</p>
+</div>
+
+<h3>Serving engine comparison</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Engine</th><th>Best For</th><th>Concurrency</th><th>Continuous Batching</th></tr></thead>
+  <tbody>
+    <tr><td>Ollama</td><td>Dev / single-user</td><td>1&ndash;4 static slots</td><td>No</td></tr>
+    <tr><td>llama.cpp server</td><td>Small team (&le;15)</td><td>8&ndash;16 slots with <code>-cb</code></td><td>Yes</td></tr>
+    <tr><td>vLLM</td><td>Production multi-user</td><td>Unlimited (PagedAttention)</td><td>Yes</td></tr>
+    <tr><td>SGLang</td><td>Multi-turn agents/RAG</td><td>Best for shared context</td><td>Yes (RadixAttention)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p><strong>Recommendation:</strong> Ollama for Foundation prototyping. For Product, migrate to llama.cpp server or SGLang &mdash; the API is OpenAI-compatible, so migration is a base-URL change. SGLang's RadixAttention is particularly valuable for Waywiser's multi-turn agentic workload with shared context prefixes.</p>
+
+<h4>Hardware reality</h4>
+<p>Qwen3.8-27B at Q4_K_M: ~16.4GB weights, ~19GB total at 8K context. Single RTX 4090 (24GB) is viable. 40&ndash;65 tok/s generation depending on GPU. For 2+ parallel slots, budget a 48GB card (A6000) or dual-GPU setup.</p>
+
+<hr class="section-divider">
+
+<!-- 6. ACCESSIBILITY -->
+<h2>6. Accessibility, AppFunctions &amp; Voice</h2>
+
+<div class="finding critical">
+  <div class="finding-head">
+    <span class="risk-badge high">Blueprint error</span>
+    <span class="finding-title">AppFunctions is not available to Waywiser</span>
+  </div>
+  <p>The <code>EXECUTE_APP_FUNCTIONS</code> permission is restricted to system-level callers: Gemini, OEM assistants, and apps explicitly allowlisted by Google. A sideloaded third-party app <strong>cannot call AppFunctions</strong>. Blueprint &sect;63's integration hierarchy must drop AppFunctions entirely.</p>
+</div>
+
+<div class="finding critical">
+  <div class="finding-head">
+    <span class="risk-badge high">Blueprint error</span>
+    <span class="finding-title">ECM blocks AccessibilityService for sideloaded apps on Android 15+</span>
+  </div>
+  <p>Android 15's Enhanced Confirmation Mode (ECM) uses a system-level allowlist in <code>/system/etc/sysconfig</code>. Only factory-image packages bypass it. A sideloaded internal APK is blocked from enabling Accessibility and NotificationListener services <strong>by default</strong>. Mitigation requires either: (a) customizing the device factory image, (b) MDM programmatic grant, or (c) per-device ADB enablement.</p>
+</div>
+
+<div class="finding warning">
+  <div class="finding-head">
+    <span class="risk-badge medium">Watch</span>
+    <span class="finding-title">ROLE_ASSISTANT cleared on every APK reinstall</span>
+  </div>
+  <p>Known active bug (reported March 2026, affects even official apps). The <code>assistant</code> and <code>voice_interaction_service</code> Secure Settings are wiped on each update. For an internal app receiving frequent updates, this makes ROLE_ASSISTANT unreliable without a post-update MDM hook or ADB script.</p>
+</div>
+
+<h3>Revised integration hierarchy</h3>
+
+<div class="correction">
+  <div class="correction-box before">
+    <div class="cb-label">Blueprint &sect;63 (current)</div>
+    <p>1. Native capability</p>
+    <p>2. Official app API</p>
+    <p>3. <strong>AppFunction</strong></p>
+    <p>4. Android Intent</p>
+    <p>5. Verified deep link</p>
+    <p>6. Notification action</p>
+    <p>7. Accessibility semantic</p>
+    <p>8. Visual coordinate</p>
+  </div>
+  <div class="correction-box after">
+    <div class="cb-label">Corrected hierarchy</div>
+    <p>1. Native Waywiser capability</p>
+    <p>2. Official application API</p>
+    <p>3. Android Intent</p>
+    <p>4. Verified deep link</p>
+    <p>5. Notification action</p>
+    <p>6. Accessibility semantic (requires ECM bypass)</p>
+    <p>7. Visual coordinate automation</p>
+    <p>&nbsp;</p>
+  </div>
+</div>
+
+<hr class="section-divider">
+
+<!-- 7. RISK MATRIX -->
+<h2>7. Consolidated Risk Matrix</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Risk</th><th>Severity</th><th>Likelihood</th><th>Mitigation</th><th>When</th></tr></thead>
+  <tbody>
+    <tr><td>Romanian language quality</td><td style="color:var(--risk-high);font-weight:600">High</td><td>Medium</td><td>Benchmark 200 Romanian examples before committing</td><td>Week 1</td></tr>
+    <tr><td>Pi reducer/recovery port</td><td style="color:var(--risk-high);font-weight:600">High</td><td>High</td><td>Port reducer first, run conformance suite against it early</td><td>Months 1&ndash;3</td></tr>
+    <tr><td>FFI streaming bridge</td><td style="color:var(--risk-medium);font-weight:600">Medium</td><td>Medium</td><td>Build streaming spike in 90-day proof; study Operit patterns</td><td>Months 1&ndash;2</td></tr>
+    <tr><td>ECM / Accessibility grants</td><td style="color:var(--risk-medium);font-weight:600">Medium</td><td>High</td><td>Establish MDM or factory-image path for device provisioning</td><td>Before V2 Agency</td></tr>
+    <tr><td>Qwen overthinking</td><td style="color:var(--risk-medium);font-weight:600">Medium</td><td>High</td><td>Integrate <code>reasoning_effort</code> controls into Pi agent loop</td><td>Foundation</td></tr>
+    <tr><td>Mali GPU instability</td><td style="color:var(--risk-medium);font-weight:600">Medium</td><td>Medium</td><td>Use LiteRT-LM (OpenCL), not llama.cpp (Vulkan) on Exynos</td><td>Edge experiment</td></tr>
+    <tr><td>ROLE_ASSISTANT reinstall bug</td><td style="color:var(--risk-low);font-weight:600">Low</td><td>High</td><td>Post-update ADB script or MDM hook; treat as optional</td><td>V2 Product</td></tr>
+    <tr><td>Serving scalability</td><td style="color:var(--risk-low);font-weight:600">Low</td><td>Low</td><td>Migrate Ollama &rarr; llama.cpp server / SGLang when needed</td><td>V2 Product</td></tr>
+  </tbody>
+</table>
+</div>
+
+<hr class="section-divider">
+
+<!-- 8. TIMELINE -->
+<h2>8. Revised Effort Estimate</h2>
+
+<p>Based on the Pi codebase analysis (~10.5K LOC core, ~6.5K LOC Waywiser extensions) and FFI research (6&ndash;8 weeks for bridge), total effort across all layers:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Layer</th><th>Eng-months</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>Pi core port to Rust</td><td>8&ndash;12</td><td>Agent loop, sessions, reducer, compaction, storage, provider</td></tr>
+    <tr><td>Waywiser extensions port</td><td>8&ndash;11</td><td>Memory, Brain, permissions, skills, work/goals, delegation</td></tr>
+    <tr><td>Android / Kotlin layer</td><td>10&ndash;16</td><td>Compose UI, FFI bridge, lifecycle, voice, notifications, a11y</td></tr>
+    <tr><td><strong>Total</strong></td><td><strong>26&ndash;39</strong></td><td></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>With 4 engineers: <strong>7&ndash;10 months</strong> for Foundation, <strong>13&ndash;20 months</strong> total for first Product. This is roughly consistent with the blueprint's timeline at the lower bound, assuming strong execution and no major surprises in the reducer port or FFI bridge.</p>
+
+<hr class="section-divider">
+
+<!-- 9. BLUEPRINT CORRECTIONS -->
+<h2>9. Required Blueprint Corrections</h2>
+
+<h3>Must fix (factual errors)</h3>
+
+<div class="action-item">
+  <span class="action-num">C-1</span>
+  <div class="action-body"><strong>&sect;63 &mdash; Remove AppFunctions from integration hierarchy.</strong> <code>EXECUTE_APP_FUNCTIONS</code> is system-only. Waywiser cannot call them.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">C-2</span>
+  <div class="action-body"><strong>&sect;43 &mdash; Reframe single-slot as deployment default, not architectural constraint.</strong> <code>OLLAMA_NUM_PARALLEL</code> is configurable; the real constraint is GPU VRAM for concurrent KV caches.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">C-3</span>
+  <div class="action-body"><strong>&sect;22 &mdash; Add ECM bypass requirement to Accessibility automation.</strong> Android 15+ blocks sideloaded apps from enabling AccessibilityService without factory-image allowlisting, MDM grant, or ADB.</div>
+</div>
+
+<h3>Should fix (design improvements)</h3>
+
+<div class="action-item">
+  <span class="action-num">C-4</span>
+  <div class="action-body"><strong>&sect;52 &mdash; Add Gemma 4 E2B as primary edge candidate.</strong> It outperforms all three listed candidates and uses the better-supported LiteRT-LM runtime on Android. Recommend also adding FunctionGemma 270M as lightweight router.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">C-5</span>
+  <div class="action-body"><strong>&sect;58 &mdash; Downgrade ROLE_ASSISTANT from "should support" to "optional enhancement."</strong> The reinstall bug makes it unreliable for a frequently-updated internal app. All baseline invocation paths are already independent of it.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">C-6</span>
+  <div class="action-body"><strong>I6 &mdash; Clarify invariant as "one authoritative model <em>at a time</em>"</strong> with a validated upgrade path, not a permanent model identity lock. The model alias architecture (&sect;40) already supports this &mdash; the invariant wording should match.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">C-7</span>
+  <div class="action-body"><strong>New section &mdash; Add device provisioning requirements.</strong> The blueprint assumes internal distribution solves permissions, but ECM, battery optimization, and ROLE_ASSISTANT all require explicit device setup. A provisioning checklist (MDM configuration, ADB scripts, battery exemption) belongs in the blueprint.</div>
+</div>
+
+<hr class="section-divider">
+
+<!-- 10. ACTIONS -->
+<h2>10. Recommended Immediate Actions</h2>
+
+<div class="action-item">
+  <span class="action-num">A-1</span>
+  <div class="action-body"><strong>Romanian language validation (Week 1).</strong> Run 200 diverse Romanian examples through Qwen3.8-27B: calendar entries, notification text, SMS/chat messages, mixed Romanian-English. Measure coherence, structured-output quality, and tool-calling accuracy. This is a go/no-go gate for the single-model bet.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">A-2</span>
+  <div class="action-body"><strong>Thinking-budget integration spike (Week 2).</strong> Test Qwen3.8-27B's <code>reasoning_effort</code> parameter (low/medium/xhigh) against representative Pi agent loop turns. Measure token waste and latency at each level. Establish per-priority defaults: P0 interactive = medium, P3 Brain reflection = xhigh, tool calls = low.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">A-3</span>
+  <div class="action-body"><strong>Port Pi conformance suite to language-agnostic fixtures (Month 1).</strong> Extract <code>conformance.ts</code> test cases into JSON/CBOR fixture files that both TypeScript and Rust implementations can consume. This is the single highest-leverage preparation for the Rust port.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">A-4</span>
+  <div class="action-body"><strong>FFI streaming spike (Month 1&ndash;2).</strong> Build a minimal Kotlin/Compose &harr; Rust bridge that streams agent events via bounded tokio channels. Test cancellation, Activity destruction, and process recreation. Study Operit's architecture. Allocate ~40% of the 90-day proof to this.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">A-5</span>
+  <div class="action-body"><strong>Device provisioning path (Month 1).</strong> Establish how company devices will bypass ECM for AccessibilityService and NotificationListener. Test MDM grant vs. factory-image allowlist vs. ADB script. This gates the entire device agency layer.</div>
+</div>
+<div class="action-item">
+  <span class="action-num">A-6</span>
+  <div class="action-body"><strong>Edge model benchmark on actual S21+ (Month 2).</strong> Run Gemma 4 E2B via LiteRT-LM on the target device. Measure cold load, generation speed, memory, thermal behavior, and battery impact. Compare against FunctionGemma 270M for classification-only tasks. The blueprint's llama.cpp/Vulkan path is unlikely to work on Mali-G78.</div>
+</div>
+
+</div>

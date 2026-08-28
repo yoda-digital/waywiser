@@ -1,0 +1,31 @@
+[package]
+name = "waywiser-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# This crate exists solely for integration tests across all workspace crates.
+
+[dependencies]
+pi-types = { path = "../pi-types" }
+pi-core = { path = "../pi-core" }
+pi-inference = { path = "../pi-inference" }
+pi-session = { path = "../pi-session" }
+waywiser-core = { path = "../waywiser-core" }
+waywiser-security = { path = "../waywiser-security" }
+waywiser-work = { path = "../waywiser-work" }
+waywiser-delegation = { path = "../waywiser-delegation" }
+waywiser-proactive = { path = "../waywiser-proactive" }
+waywiser-context = { path = "../waywiser-context" }
+waywiser-attention = { path = "../waywiser-attention" }
+waywiser-notifications = { path = "../waywiser-notifications" }
+waywiser-automation = { path = "../waywiser-automation" }
+waywiser-workflows = { path = "../waywiser-workflows" }
+waywiser-ffi = { path = "../waywiser-ffi" }
+
+uuid.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true

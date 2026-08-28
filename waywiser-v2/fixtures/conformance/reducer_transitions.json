@@ -1,0 +1,78 @@
+{
+  "description": "Reducer state machine conformance fixtures — validate state transition table",
+  "fixtures": [
+    {
+      "name": "idle_to_preparing",
+      "from": "Idle",
+      "action": "StartPrepare",
+      "expected_to": "Preparing",
+      "valid": true
+    },
+    {
+      "name": "preparing_to_executing",
+      "from": "Preparing",
+      "action": "PrepareComplete",
+      "expected_to": "Executing",
+      "valid": true
+    },
+    {
+      "name": "executing_to_finalizing",
+      "from": "Executing",
+      "action": "ExecuteComplete",
+      "expected_to": "Finalizing",
+      "valid": true
+    },
+    {
+      "name": "finalizing_done_to_idle",
+      "from": "Finalizing",
+      "action": "FinalizeComplete(Done)",
+      "expected_to": "Idle",
+      "valid": true
+    },
+    {
+      "name": "finalizing_followup_to_preparing",
+      "from": "Finalizing",
+      "action": "FinalizeComplete(FollowUp)",
+      "expected_to": "Preparing",
+      "valid": true
+    },
+    {
+      "name": "executing_abort_to_aborted",
+      "from": "Executing",
+      "action": "Abort",
+      "expected_to": "Aborted",
+      "valid": true
+    },
+    {
+      "name": "idle_cannot_execute_complete",
+      "from": "Idle",
+      "action": "ExecuteComplete",
+      "expected_to": null,
+      "valid": false,
+      "expected_error": "invalid transition"
+    },
+    {
+      "name": "idle_cannot_finalize",
+      "from": "Idle",
+      "action": "FinalizeComplete(Done)",
+      "expected_to": null,
+      "valid": false,
+      "expected_error": "invalid transition"
+    },
+    {
+      "name": "recovery_escalation",
+      "description": "3 recovery failures → Aborted",
+      "from": "Recovering(0)",
+      "actions": ["RecoveryFailed", "RecoveryFailed", "RecoveryFailed"],
+      "expected_states": ["Recovering(1)", "Recovering(2)", "Aborted"],
+      "valid": true
+    },
+    {
+      "name": "corruption_triggers_recovery",
+      "from": "Executing",
+      "action": "CorruptionDetected",
+      "expected_to": "Recovering(0)",
+      "valid": true
+    }
+  ]
+}

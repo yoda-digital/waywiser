@@ -1,0 +1,15 @@
+[package]
+name = "waywiser-proactive"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pi-types = { path = "../pi-types" }
+waywiser-work = { path = "../waywiser-work" }
+tokio.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true

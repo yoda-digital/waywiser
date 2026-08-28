@@ -1,0 +1,69 @@
+{
+  "description": "Session CRUD conformance fixtures — validate any SessionBackend implementation",
+  "fixtures": [
+    {
+      "name": "create_and_load",
+      "description": "Created session can be loaded back",
+      "steps": [
+        {"action": "create_session", "params": {"id": "session-001"}},
+        {"action": "load_session", "params": {"id": "session-001"}}
+      ],
+      "expected": {
+        "load_result": "Some",
+        "session_id": "session-001",
+        "lane_count": 1
+      }
+    },
+    {
+      "name": "load_nonexistent",
+      "description": "Loading a nonexistent session returns None",
+      "steps": [
+        {"action": "load_session", "params": {"id": "session-nonexistent"}}
+      ],
+      "expected": {
+        "load_result": "None"
+      }
+    },
+    {
+      "name": "delete_session",
+      "description": "Deleted session cannot be loaded",
+      "steps": [
+        {"action": "create_session", "params": {"id": "session-002"}},
+        {"action": "delete_session", "params": {"id": "session-002"}},
+        {"action": "load_session", "params": {"id": "session-002"}}
+      ],
+      "expected": {
+        "delete_result": true,
+        "load_result": "None"
+      }
+    },
+    {
+      "name": "list_sessions_pagination",
+      "description": "List sessions respects limit and offset",
+      "steps": [
+        {"action": "create_session", "params": {"id": "session-a"}},
+        {"action": "create_session", "params": {"id": "session-b"}},
+        {"action": "create_session", "params": {"id": "session-c"}},
+        {"action": "list_sessions", "params": {"limit": 2, "offset": 0}}
+      ],
+      "expected": {
+        "list_count": 2,
+        "total_sessions": 3
+      }
+    },
+    {
+      "name": "save_and_reload",
+      "description": "Modified session is persisted on save",
+      "steps": [
+        {"action": "create_session", "params": {"id": "session-003"}},
+        {"action": "modify_session", "params": {"id": "session-003", "add_lane": true}},
+        {"action": "save_session", "params": {"id": "session-003"}},
+        {"action": "load_session", "params": {"id": "session-003"}}
+      ],
+      "expected": {
+        "load_result": "Some",
+        "lane_count": 2
+      }
+    }
+  ]
+}
