@@ -15,6 +15,19 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { waywiserHome, readJSON, writeJSON, registry_ } from "./utils/state.js";
 import { fmtStamp, fmtAge } from "./utils/time.js";
+import * as fs from "node:fs";
+
+function notifyAudit(outcome: string, channels: string[], urgency: string, title: string): void {
+	// Noise-proactivity metric (K9f18fa5f): one durable line per attempt, incl.
+	// suppressed/rate-limited, so the weekly report can compute useful/total.
+	try {
+	const home = waywiserHome();
+	const dir = path.join(home, "audit");
+	fs.mkdirSync(dir, { recursive: true });
+	const line = `${new Date().toISOString()} ${outcome} channels=${channels.join(",") || "none"} urgency=${urgency} title=${title.slice(0, 80).replace(/[\n\t]/g, " ")}`;
+	fs.appendFileSync(path.join(dir, "notify.log"), line + "\n");
+	} catch { /* never block a notification on audit */ }
+}
 
 interface NotifyChannelDesktop {
 	enabled: boolean;
@@ -337,9 +350,15 @@ export async function sendNotification(
 ): Promise<NotifyResult> {
 	const config = readNotifyConfig();
 
-	if (!opts?.bypassQuiet && isInQuietHours()) return { sent: [], failed: [] };
+	if (!opts?.bypassQuiet && isInQuietHours()) {
+		notifyAudit("suppressed-quiet", channels ?? [], String(opts?.urgency ?? "normal"), title);
+		return { sent: [], failed: [] };
+	}
 	const limit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
-	if (isRateLimited(limit)) return { sent: [], failed: [`rate-limited (${limit}/hour reached — wait or increase rateLimit in ~/.waywiser/notify.json)`] };
+	if (isRateLimited(limit)) {
+		notifyAudit("rate-limited", channels ?? [], String(opts?.urgency ?? "normal"), title);
+		return { sent: [], failed: [`rate-limited (${limit}/hour reached — wait or increase rateLimit in ~/.waywiser/notify.json)`] };
+	}
 
 	const targets = channels && channels.length ? channels : (config.default?.length ? config.default : DEFAULT_CONFIG.default);
 	const sent: string[] = [];
@@ -373,6 +392,7 @@ export async function sendNotification(
 
 	if (sent.length) sendLog.push(Date.now());
 	registry_().log("notify", `[${sent.join(",") || "none"}] ${title}: ${body.slice(0, 100)}`);
+	notifyAudit(sent.length ? "sent" : "failed", targets, String(opts?.urgency ?? "normal"), title);
 
 	return { sent, failed };
 }
