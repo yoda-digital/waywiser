@@ -42,9 +42,19 @@ interface SchemaFlag {
 	long?: string;
 }
 
+// BUG-FIXED (2026-08-25): the full-root schema (`gog schema --json`) is
+// ~5.9 MB on gog v0.37+ and exceeds the runner's 4 MB stdout cap →
+// truncated JSON → "gog schema output is not valid JSON" → calendar tool
+// permanently reported incompatible.
+//
+// FIX: validate against the TARGETED schema (`gog schema calendar --json`),
+// ~240 KB. It is authoritative for every calendar.* command below and repeats
+// the global flag set on the calendar node (verified on v0.37). Bare `schema`
+// stays as fallback for older builds without per-command schemas (best effort).
+// `schema` is always in the runner's exact-command allowlist.
+
 // Required calendar commands (blueprint §7.1)
 const REQUIRED_COMMANDS = [
-	"schema",
 	"calendar.calendars",
 	"calendar.events",
 	"calendar.event",
@@ -99,14 +109,14 @@ function flattenCommands(cmd: SchemaCommand, prefix = ""): string[] {
 	return ids;
 }
 
-/** Extract global flag long-names from root command. */
-function extractGlobalFlags(cmd: SchemaCommand): string[] {
-	const flags: string[] = [];
+/** Extract flag long-names from a command's flags array. */
+function extractFlagNames(cmd: SchemaCommand): string[] {
+	const names: string[] = [];
 	for (const f of cmd.flags ?? []) {
-		if (f.long) flags.push(f.long);
-		else if (f.name) flags.push(f.name);
+		if (f.long) names.push(f.long);
+		else if (f.name) names.push(f.name);
 	}
-	return flags;
+	return names;
 }
 
 let cachedContract: GogContract | undefined;
@@ -116,8 +126,28 @@ function buildCacheKey(binaryPath: string, mtime: number, build: string): string
 	return `${binaryPath}:${mtime}:${build}`;
 }
 
+function failContract(
+	binaryPath: string,
+	mtime: number,
+	build: string,
+	reason: string,
+): GogContract {
+	const contract: GogContract = {
+		compatible: false,
+		schemaVersion: -1,
+		build,
+		missing: [reason],
+		commands: new Set(),
+		binaryPath,
+	};
+	cacheKey = buildCacheKey(binaryPath, mtime, build);
+	cachedContract = contract;
+	return contract;
+}
+
 /**
- * Validate gog CLI capabilities by running `gog schema --json`.
+ * Validate gog CLI capabilities via the targeted `gog schema calendar --json`
+ * (fallback: bare `gog schema --json` for older builds).
  * Results are cached by binary path + mtime + build string.
  */
 export async function validateContract(
@@ -134,71 +164,67 @@ export async function validateContract(
 		return cachedContract;
 	}
 
-	const result = await runner.run({
-		command: ["schema", "--json"],
+	// Prefer the small targeted schema (~240 KB on v0.37): parses under the cap.
+	let result = await runner.run({
+		command: ["schema", "calendar", "--json"],
 		exactCommands: ["schema"],
 		noInput: true,
 		timeoutMs: 10_000,
 	});
+	if (result.exitCode !== 0) {
+		// Older builds without per-command schemas: try the bare root schema
+		// (best effort — may still exceed the cap on v0.37+; reported honestly).
+		result = await runner.run({
+			command: ["schema", "--json"],
+			exactCommands: ["schema"],
+			noInput: true,
+			timeoutMs: 10_000,
+		});
+	}
 
 	if (result.exitCode !== 0) {
-		return {
-			compatible: false,
-			schemaVersion: -1,
-			build: "unknown",
-			missing: ["gog schema command failed"],
-			commands: new Set(),
-			binaryPath,
-		};
+		return failContract(binaryPath, mtime, "unknown", `gog schema command failed (exit ${result.exitCode})`);
 	}
 
 	let schema: GogSchema;
 	try {
 		schema = JSON.parse(result.stdout);
 	} catch {
-		return {
-			compatible: false,
-			schemaVersion: -1,
-			build: "unknown",
-			missing: ["gog schema output is not valid JSON"],
-			commands: new Set(),
-			binaryPath,
-		};
+		return failContract(binaryPath, mtime, "unknown", "gog schema output is not valid JSON");
 	}
 
 	// Validate schema version
 	if (schema.schema_version !== 1) {
-		return {
-			compatible: false,
-			schemaVersion: schema.schema_version,
-			build: schema.build ?? "unknown",
-			missing: [`schema_version ${schema.schema_version} != 1`],
-			commands: new Set(),
+		return failContract(
 			binaryPath,
-		};
+			mtime,
+			schema.build ?? "unknown",
+			`schema_version ${schema.schema_version} != 1`,
+		);
 	}
 
 	const missing: string[] = [];
 
-	// Validate commands (root-relative IDs, e.g. "calendar.events" and "schema")
-	const rootCommand = schema.command;
-	const allCommands = rootCommand
-		? [...(rootCommand.commands ?? []), ...(rootCommand.subcommands ?? [])].flatMap((sub) =>
-				flattenCommands(sub, ""),
-		  )
-		: [];
-	const commandSet = new Set(allCommands);
+	// The command tree is identical in both schema shapes (root or targeted);
+	// flatten it and normalize every ID to the contract form ("calendar.x").
+	// Targeted shape: root node is "calendar", ids are sub-rendative
+	// ("calendars", "alias.list"). Bare shape: root is the gog binary and the
+	// calendar subtree has id "calendar" with the same children.
+	const tree = schema.command ? flattenCommands(schema.command) : [];
+	const commandSet = new Set<string>();
+	for (const id of tree) {
+		commandSet.add(id.startsWith("calendar.") || id === "calendar" ? id : `calendar.${id}`);
+	}
 	for (const req of REQUIRED_COMMANDS) {
 		if (!commandSet.has(req)) missing.push(`command ${req}`);
 	}
 
-	// Validate global flags
-	const globalFlags = schema.command ? extractGlobalFlags(schema.command) : [];
+	// Global flags: on v0.37 the targeted schema repeats the full global flag
+	// set on the calendar node. Extract from the command node.
+	const globalFlags = extractFlagNames(schema.command ?? { flags: [] });
 	const flagSet = new Set(globalFlags);
 	for (const req of REQUIRED_FLAGS) {
-		if (!flagSet.has(req)) {
-			missing.push(`global flag --${req}`);
-		}
+		if (!flagSet.has(req)) missing.push(`global flag --${req}`);
 	}
 
 	const contract: GogContract = {
